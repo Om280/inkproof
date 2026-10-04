@@ -89,3 +89,12 @@ jobs:
         with:
           name: inkproof-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Close CI failure issue on success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "CI failure log in:title" --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "CI is green at $GITHUB_SHA (tests pass, APK built)."
+          done
