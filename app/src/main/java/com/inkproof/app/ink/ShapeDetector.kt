@@ -125,11 +125,23 @@ object ShapeDetector {
         val size = max(b.width, b.height)
         if (hypot(last.x - first.x, last.y - first.y) > size * 0.4f) return null
 
-        val corners = findCorners(points)
-        if (corners.size < 3 || corners.size > 8) return null
+        val interior = findCorners(points)
+        val window = (points.size / 12).coerceIn(2, 8)
+        val vertices = ArrayList<StrokePoint>()
+        // The stroke's start/end seam of a closed shape is usually a corner
+        // itself (people start drawing rectangles at a corner) — findCorners
+        // only sees interior indices, so test the seam explicitly.
+        if (seamIsCorner(points, window)) {
+            val seam = points.first()
+            val nearDuplicate = interior.firstOrNull()?.let { idx ->
+                hypot(points[idx].x - seam.x, points[idx].y - seam.y) < size * 0.08f
+            } ?: false
+            if (!nearDuplicate) vertices.add(seam)
+        }
+        interior.mapTo(vertices) { points[it] }
+        if (vertices.size < 3 || vertices.size > 8) return null
 
-        val vertices = corners.map { points[it] }
-        return when (corners.size) {
+        return when (vertices.size) {
             3 -> DetectedShape(ShapeType.TRIANGLE, closeRing(vertices), 0.85f)
             4 -> {
                 // Axis-aligned-ish quadrilateral -> rectangle/square
@@ -206,6 +218,23 @@ object ShapeDetector {
     }
 
     private fun cornerCount(points: List<StrokePoint>): Int = findCorners(points).size
+
+    /** Is the junction between stroke end and stroke start itself a corner? */
+    private fun seamIsCorner(points: List<StrokePoint>, window: Int): Boolean {
+        val n = points.size
+        if (n < window * 2 + 2) return false
+        val endA = points[n - 1 - window]
+        val endB = points[n - 1]
+        val startA = points[0]
+        val startB = points[window]
+        var v1x = endB.x - endA.x; var v1y = endB.y - endA.y
+        var v2x = startB.x - startA.x; var v2y = startB.y - startA.y
+        val l1 = hypot(v1x, v1y); val l2 = hypot(v2x, v2y)
+        if (l1 < 1e-3f || l2 < 1e-3f) return false
+        v1x /= l1; v1y /= l1; v2x /= l2; v2y /= l2
+        val dot = (v1x * v2x + v1y * v2y).coerceIn(-1f, 1f)
+        return Math.acos(dot.toDouble()) > Math.toRadians(45.0)
+    }
 
     // ----- helpers -----
 
