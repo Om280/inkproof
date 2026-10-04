@@ -22,6 +22,9 @@ jobs:
   android:
     name: Android unit tests + debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -44,26 +47,34 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleDebug --stacktrace --console=plain 2>&1 | tee /tmp/build.log
 
-      - name: Publish failure details to summary
+      - name: Publish failure details (step summary + CI issue)
         if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo '## Failure details'
+            echo "## CI failure details (run ${GITHUB_RUN_ID})"
             echo '```'
             for f in /tmp/tests.log /tmp/build.log; do
-              [ -f "$f" ] && grep -E "^e: |error:|FAILED|Caused by|What went wrong|Execution failed|Unresolved|Test .* FAILED" -A 3 "$f" | head -c 50000
+              [ -f "$f" ] && grep -E "^e: |error:|FAILED|Caused by|What went wrong|Execution failed|Unresolved|Test .* FAILED" -A 3 "$f" | head -c 40000
             done
             echo
             echo '--- test case failures ---'
             find app/build/test-results -name '*.xml' 2>/dev/null | while read -r x; do
-              if grep -q '<failure' "$x"; then
+              if grep -q '<failure\|<error' "$x"; then
                 echo "FILE: $x"
-                grep -oE '<testcase name="[^"]*"' "$x" | head -5
-                grep -A 6 '<failure' "$x" | head -c 4000
+                grep -B1 -A 8 '<failure\|<error' "$x" | head -c 4000
               fi
             done
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > /tmp/summary.md
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "CI failure log in:title" --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file /tmp/summary.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "CI failure log" --body-file /tmp/summary.md
+          fi
 
       - name: Upload test reports
         if: always()
