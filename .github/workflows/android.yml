@@ -35,10 +35,35 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee /tmp/tests.log
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --console=plain 2>&1 | tee /tmp/build.log
+
+      - name: Publish failure details to summary
+        if: failure()
+        run: |
+          {
+            echo '## Failure details'
+            echo '```'
+            for f in /tmp/tests.log /tmp/build.log; do
+              [ -f "$f" ] && grep -E "^e: |error:|FAILED|Caused by|What went wrong|Execution failed|Unresolved|Test .* FAILED" -A 3 "$f" | head -c 50000
+            done
+            echo
+            echo '--- test case failures ---'
+            find app/build/test-results -name '*.xml' 2>/dev/null | while read -r x; do
+              if grep -q '<failure' "$x"; then
+                echo "FILE: $x"
+                grep -oE '<testcase name="[^"]*"' "$x" | head -5
+                grep -A 6 '<failure' "$x" | head -c 4000
+              fi
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test reports
         if: always()
