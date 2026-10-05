@@ -192,6 +192,14 @@ npm start                   # zero dependencies, plain Node
 npm test
 ```
 
+**Google Gemini is the primary AI provider** — set `GEMINI_API_KEY`
+(free key from https://aistudio.google.com/apikey). The default model is the
+rolling alias `gemini-flash-latest`, so the backend never pins an obsolete
+model name; override with `GEMINI_MODEL`, and if a pinned name ever
+disappears the backend auto-discovers a current Flash model via the
+ListModels API. Anthropic and OpenAI keys work as drop-in alternatives
+behind the same provider interface.
+
 No keys configured ⇒ the backend runs in mock mode automatically. Secrets are
 read only from the environment; the Android client never contains them.
 

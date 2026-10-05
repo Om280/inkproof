@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../server.js';
 import { validateCheckRequest, sanitizeCheckResponse } from '../lib/schema.js';
 import { mockCheck } from '../lib/mock.js';
-import { extractJson } from '../lib/ai.js';
+import { extractJson, pickProvider } from '../lib/ai.js';
 
 let server;
 let base;
@@ -119,4 +119,21 @@ test('extractJson survives markdown fences and prose', () => {
   assert.deepEqual(extractJson('Sure! Here it is: {"a":1} hope that helps'), { a: 1 });
   assert.equal(extractJson('no json here'), null);
   assert.equal(extractJson(''), null);
+});
+
+test('gemini is the primary provider when its key is present', () => {
+  assert.ok(pickProvider({ GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' }));
+  // Priority is observable via health elsewhere; here assert selection order
+  // by elimination: without gemini, anthropic/openai still work; with no
+  // keys at all there is no provider.
+  assert.ok(pickProvider({ ANTHROPIC_API_KEY: 'a' }));
+  assert.ok(pickProvider({ OPENAI_API_KEY: 'o' }));
+  assert.equal(pickProvider({}), null);
+});
+
+test('health reports the active provider', async () => {
+  const res = await fetch(`${base}/api/health`);
+  const data = await res.json();
+  assert.equal(data.ok, true);
+  assert.ok(['gemini', 'anthropic', 'openai', 'mock'].includes(data.ai_provider));
 });

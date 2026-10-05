@@ -16,7 +16,7 @@ import { aiCheck } from './lib/ai.js';
 const env = process.env;
 const PORT = Number(env.PORT || 8787);
 const MOCK_MODE = env.MOCK_MODE === 'true' ||
-  (!env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY);
+  (!env.GEMINI_API_KEY && !env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY);
 const RATE_LIMIT_PER_MINUTE = Number(env.RATE_LIMIT_PER_MINUTE || 20);
 
 // ----- simple in-memory rate limiter (per IP, sliding minute) -----
@@ -124,7 +124,13 @@ export function createServer() {
           ok: true,
           service: 'inkproof-backend',
           mock_mode: MOCK_MODE,
-          ai_configured: Boolean(env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY),
+          ai_configured: Boolean(
+            env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY
+          ),
+          ai_provider: env.GEMINI_API_KEY ? 'gemini'
+            : env.ANTHROPIC_API_KEY ? 'anthropic'
+            : env.OPENAI_API_KEY ? 'openai'
+            : 'mock',
           wolfram_configured: Boolean(env.WOLFRAM_APP_ID)
         });
         return;

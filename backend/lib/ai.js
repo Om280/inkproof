@@ -42,7 +42,7 @@ JSON schema:
 export async function aiCheck(env, request, action) {
   const provider = pickProvider(env);
   if (!provider) {
-    return errorResponse('No AI provider configured on the backend. Set ANTHROPIC_API_KEY or OPENAI_API_KEY, or enable MOCK_MODE.');
+    return errorResponse('No AI provider configured on the backend. Set GEMINI_API_KEY (recommended), ANTHROPIC_API_KEY or OPENAI_API_KEY, or enable MOCK_MODE.');
   }
 
   const userPrompt = buildPrompt(request, action);
@@ -81,10 +81,85 @@ function buildPrompt(request, action) {
   return `QUESTION (source: ${request.question_source || 'typed'}):\n${request.question_text}\n\nSTUDENT'S HANDWRITTEN SOLUTION (transcribed, in order):\n${lines}\n\nCheck this work.`;
 }
 
-function pickProvider(env) {
+export function pickProvider(env) {
+  // Gemini is the primary provider; Anthropic/OpenAI remain as drop-in
+  // alternatives behind the same complete(system, user) interface.
+  if (env.GEMINI_API_KEY) return geminiProvider(env);
   if (env.ANTHROPIC_API_KEY) return anthropicProvider(env);
   if (env.OPENAI_API_KEY) return openaiProvider(env);
   return null;
+}
+
+// Rolling alias maintained by Google — always points at the current stable
+// Flash model, so we never pin an obsolete model name. Override with
+// GEMINI_MODEL if you want a specific version.
+const GEMINI_DEFAULT_MODEL = 'gemini-flash-latest';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+function geminiProvider(env) {
+  let resolvedModel = env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
+
+  async function call(model, system, user) {
+    const res = await fetch(
+      `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': env.GEMINI_API_KEY
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: 'user', parts: [{ text: user }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+            maxOutputTokens: 4000
+          }
+        }),
+        signal: AbortSignal.timeout(60000)
+      }
+    );
+    return res;
+  }
+
+  // If the configured model name is gone (404), discover a current Flash
+  // model from ListModels instead of failing hard.
+  async function discoverFlashModel() {
+    const res = await fetch(`${GEMINI_BASE}/models?pageSize=200`, {
+      headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const models = (data.models || [])
+      .filter((m) =>
+        (m.supportedGenerationMethods || []).includes('generateContent'))
+      .map((m) => (m.name || '').replace(/^models\//, ''));
+    return (
+      models.find((n) => n.includes('flash') && n.includes('latest')) ||
+      models.find((n) => n.includes('flash') && !n.includes('lite')) ||
+      models.find((n) => n.includes('flash')) ||
+      models[0] ||
+      null
+    );
+  }
+
+  return {
+    async complete(system, user) {
+      let res = await call(resolvedModel, system, user);
+      if (res.status === 404) {
+        const fallback = await discoverFlashModel();
+        if (fallback && fallback !== resolvedModel) {
+          resolvedModel = fallback;
+          res = await call(resolvedModel, system, user);
+        }
+      }
+      if (!res.ok) throw new Error(`gemini ${res.status}`);
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+    }
+  };
 }
 
 function anthropicProvider(env) {
