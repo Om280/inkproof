@@ -23,7 +23,7 @@ jobs:
     name: Android unit tests + debug APK
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       issues: write
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +89,27 @@ jobs:
         with:
           name: inkproof-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Easy download: keep the newest debug APK on a rolling pre-release,
+      # so it can be grabbed without digging into Actions artifacts.
+      - name: Publish debug APK to the debug-latest release
+        if: success() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk inkproof-debug.apk
+          if gh release view debug-latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload debug-latest inkproof-debug.apk --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit debug-latest --repo "$GITHUB_REPOSITORY" \
+              --notes "Auto-published by CI from commit $GITHUB_SHA ($(date -u +'%Y-%m-%d %H:%M UTC'))."
+          else
+            gh release create debug-latest inkproof-debug.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "InkProof debug APK (latest)" \
+              --notes "Auto-published by CI from commit $GITHUB_SHA ($(date -u +'%Y-%m-%d %H:%M UTC'))."
+          fi
 
       - name: Close CI failure issue on success
         if: success()
