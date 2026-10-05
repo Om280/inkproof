@@ -53,8 +53,10 @@ class ShapeFactoryTest {
     @Test
     fun `circle points are equidistant from the center`() {
         val pts = ShapeFactory.create(ShapeType.CIRCLE, 0f, 0f, 200f, 100f)
-        val cx = pts.sumOf { it.x.toDouble() }.toFloat() / pts.size
-        val cy = pts.sumOf { it.y.toDouble() }.toFloat() / pts.size
+        // Center from the bounding box — a plain centroid would be biased by
+        // the duplicated closing point of the ring.
+        val cx = (pts.maxOf { it.x } + pts.minOf { it.x }) / 2f
+        val cy = (pts.maxOf { it.y } + pts.minOf { it.y }) / 2f
         val radii = pts.map { hypot(it.x - cx, it.y - cy) }
         val spread = radii.max() - radii.min()
         assertTrue("circle radius spread $spread", spread < 1.5f)

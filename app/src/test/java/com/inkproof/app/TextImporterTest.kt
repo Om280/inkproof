@@ -38,14 +38,18 @@ class TextImporterTest {
         val html = """
             <html><head><style>body{color:red}</style>
             <script>alert('x')</script></head>
-            <body><h1>Quadratics</h1><p>Solve x&sup2; &amp; show work &lt;here&gt;.</p></body></html>
+            <body><h1>Quadratics</h1><p>Solve x&sup2; &amp; show work &lt;fast&gt;.</p></body></html>
         """.trimIndent()
         val text = importer.stripHtml(html)
-        assertFalse(text.contains("<"))
+        // All markup gone…
+        assertFalse(text.contains("<h1>"))
+        assertFalse(text.contains("</p>"))
         assertFalse(text.contains("alert"))
         assertFalse(text.contains("color:red"))
+        // …but the readable content, including decoded entities, survives.
         assertTrue(text.contains("Quadratics"))
         assertTrue(text.contains("& show work"))
+        assertTrue(text.contains("<fast>"))
     }
 
     @Test
