@@ -36,18 +36,34 @@ class InkProofApp : Application() {
     val imageImporter: ImageImporter by lazy { ImageImporter(this, libraryRepository) }
 
     private val mockProvider: CheckProvider by lazy { MockCheckProvider() }
-    private val backendProvider: CheckProvider by lazy {
-        BackendCheckProvider(BuildConfig.BACKEND_BASE_URL)
-    }
     private val mockRecognizer: HandwritingRecognizer by lazy { MockRecognizer() }
     private val localRecognizer: HandwritingRecognizer by lazy { LocalDigitalInkRecognizer() }
 
-    fun checkEngine(mockMode: Boolean, confidenceThreshold: Float = 0.4f): CheckWorkEngine =
-        CheckWorkEngine(
+    // Backend provider is cached per effective URL so a Settings change
+    // takes effect on the very next check — no app restart needed.
+    @Volatile private var cachedBackend: Pair<String, CheckProvider>? = null
+
+    private fun backendProvider(url: String): CheckProvider {
+        cachedBackend?.let { (cachedUrl, provider) ->
+            if (cachedUrl == url) return provider
+        }
+        val provider = BackendCheckProvider(url)
+        cachedBackend = url to provider
+        return provider
+    }
+
+    fun checkEngine(
+        mockMode: Boolean,
+        confidenceThreshold: Float = 0.4f,
+        backendUrl: String = ""
+    ): CheckWorkEngine {
+        val effectiveUrl = backendUrl.ifBlank { BuildConfig.BACKEND_BASE_URL }
+        return CheckWorkEngine(
             pageRepository = pageRepository,
             checkRepository = checkRepository,
             recognizer = if (mockMode) mockRecognizer else localRecognizer,
-            provider = if (mockMode) mockProvider else backendProvider,
+            provider = if (mockMode) mockProvider else backendProvider(effectiveUrl),
             confidenceThreshold = confidenceThreshold
         )
+    }
 }

@@ -172,7 +172,10 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 Debug builds default to **mock mode** — the entire app, including CHECK MY
 WORK, works with no backend and no credentials.
 
-To point a build at a real backend:
+To point the app at a real backend, either set it **at runtime** in
+Settings → AI → Backend URL (e.g. `http://192.168.1.50:8787` while the
+backend runs on a computer on the same Wi-Fi — debug builds allow plain
+HTTP for this), or bake a default into the build:
 
 ```bash
 ./gradlew :app:assembleDebug -PinkproofBackendUrl=https://your-backend.example.com

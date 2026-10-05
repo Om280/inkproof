@@ -32,6 +32,8 @@ data class Settings(
     val autoShowHints: Boolean = false,
     // AI
     val mockMode: Boolean = BuildConfig.DEFAULT_MOCK_MODE,
+    /** Empty = use the build-time BuildConfig.BACKEND_BASE_URL. */
+    val backendUrl: String = "",
     val lastPageByNotebook: String = ""
 )
 
@@ -50,6 +52,7 @@ class SettingsStore(private val context: Context) {
         val RECOGNITION_CONFIDENCE = floatPreferencesKey("recognition_confidence")
         val AUTO_HINTS = booleanPreferencesKey("auto_show_hints")
         val MOCK_MODE = booleanPreferencesKey("mock_mode")
+        val BACKEND_URL = stringPreferencesKey("backend_url")
         val LAST_PAGES = stringPreferencesKey("last_page_by_notebook")
     }
 
@@ -67,6 +70,7 @@ class SettingsStore(private val context: Context) {
             recognitionConfidenceThreshold = p[Keys.RECOGNITION_CONFIDENCE] ?: 0.4f,
             autoShowHints = p[Keys.AUTO_HINTS] ?: false,
             mockMode = p[Keys.MOCK_MODE] ?: BuildConfig.DEFAULT_MOCK_MODE,
+            backendUrl = p[Keys.BACKEND_URL] ?: "",
             lastPageByNotebook = p[Keys.LAST_PAGES] ?: ""
         )
     }
@@ -106,6 +110,10 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setMockMode(value: Boolean) =
         context.dataStore.edit { it[Keys.MOCK_MODE] = value }
+
+    /** Runtime backend URL override; blank returns to the built-in default. */
+    suspend fun setBackendUrl(value: String) =
+        context.dataStore.edit { it[Keys.BACKEND_URL] = value.trim() }
 
     /** Remember the last open page per notebook ("Continue from last page"). */
     suspend fun setLastPage(notebookId: String, pageId: String) =

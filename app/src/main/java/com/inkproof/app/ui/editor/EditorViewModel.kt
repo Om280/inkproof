@@ -371,7 +371,8 @@ class EditorViewModel(
 
     private fun engine() = app.checkEngine(
         mockMode = settings.value.mockMode,
-        confidenceThreshold = settings.value.recognitionConfidenceThreshold
+        confidenceThreshold = settings.value.recognitionConfidenceThreshold,
+        backendUrl = settings.value.backendUrl
     )
 
     fun checkQuestion(questionId: String, action: CheckAction) {
