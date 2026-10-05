@@ -53,6 +53,13 @@ Primary hardware target: **OnePlus Pad + OnePlus Stylo 2**.
   export the annotated notebook back to PDF.
 - **Local-first** — notebooks, pages, handwriting, lasso, shapes and storage
   all work offline. Only CHECK/SOLVE needs the network.
+- **Dark mode** — System / Light / Dark in Settings → Appearance; one theme
+  system drives every screen, dialog and panel. Pages keep their own paper
+  color — a dark app never forces dark pages.
+- **Universal import** — one "Import file…" picker: PDF (multi-page,
+  annotatable), images (PNG/JPG/WEBP/BMP), and text formats (TXT/MD/HTML/CSV →
+  editable text pages). Unsupported formats (DOCX/XLSX/PPTX/SVG…) are rejected
+  gracefully with a clear reason, never a crash.
 - **Mock mode** — the full UX works with zero credentials; deterministic mock
   results (`mock:correct`, `mock:incorrect`, `mock:incomplete`, `mock:unclear`
   keywords force scenarios). Mock data can never leak into real checks: the
@@ -211,12 +218,19 @@ cd backend && npm test             # backend tests
 ```
 
 Covered: stroke codec roundtrips, shape detection (line/arrow/circle/ellipse/
-rectangle/square/triangle, squiggle rejection), undo/redo, line segmentation,
-strict JSON parsing (including malformed AI output), mock scenarios,
-recognition-confidence thresholding (UNCLEAR, provider never called), folders,
-text-object persistence, notebook/page persistence, page independence, question isolation (page A vs
-page B, Q1/Q2/Q3), cache invalidation on solution edits, empty-input error
-states, backend schema validation, rate limiting and dedup cache.
+rectangle/square/triangle, squiggle rejection), eraser hit-testing (segment
+distance, radius sizes, pass-through misses), shape factory geometry + scaling,
+clipboard paste independence (new IDs, no shared references), undo/redo, line
+segmentation, strict JSON parsing (including malformed AI output), mock
+scenarios, recognition-confidence thresholding (UNCLEAR, provider never
+called), SOLVE isolation (student ink never recognized, provider gets the
+question only — linear/quadratic/derivative/integral/limit), import
+classification (PDF/image/text/HTML/CSV routed; DOCX/XLSX/PPTX/SVG rejected
+with reasons), text import (HTML stripping, CSV layout, line wrapping),
+folders, text-object persistence, notebook/page persistence, page reordering,
+page independence, question isolation (page A vs page B, Q1/Q2/Q3), cache
+invalidation on solution edits, empty-input error states, backend schema
+validation, provider priority (Gemini first), rate limiting and dedup cache.
 
 CI (GitHub Actions) runs both suites and uploads a debug APK artifact on every
 push.
