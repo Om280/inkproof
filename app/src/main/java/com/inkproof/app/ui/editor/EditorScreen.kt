@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Slider
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Delete
@@ -69,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -194,6 +196,12 @@ fun EditorScreen(
             pdfBackground = content.pdfBackground,
             textObjects = content.textObjects
         )
+    }
+
+    // Chrome (outside the page) follows the app theme; the page keeps its template.
+    val chromeColor = MaterialTheme.colorScheme.background
+    LaunchedEffect(chromeColor, canvasRef) {
+        canvasRef?.setChromeColor(chromeColor.toArgb())
     }
 
     // Keep tool config in sync.
@@ -746,6 +754,15 @@ private fun PenOptionsDialog(
     else PenPalette.penColors
     val widths = if (tool == ToolType.HIGHLIGHTER) PenPalette.highlighterWidths
     else PenPalette.penWidths
+    var customOpen by remember { mutableStateOf(false) }
+
+    if (customOpen) {
+        CustomColorDialog(
+            initialColor = currentColor,
+            onPick = { picked -> onColor(picked); customOpen = false },
+            onDismiss = { customOpen = false }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -754,21 +771,43 @@ private fun PenOptionsDialog(
             Column {
                 Text("Color", style = MaterialTheme.typography.labelMedium, color = MutedText)
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    colors.forEach { c ->
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(Color(c))
-                                .border(
-                                    if (c == currentColor) 3.dp else 1.dp,
-                                    if (c == currentColor) InkNavy else Divider,
-                                    CircleShape
+                val rows = colors.chunked(7)
+                rows.forEachIndexed { rowIndex, rowColors ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        rowColors.forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        if (c == currentColor) 3.dp else 1.dp,
+                                        if (c == currentColor) InkNavy else Divider,
+                                        CircleShape
+                                    )
+                                    .clickable { onColor(c) }
+                            )
+                        }
+                        if (rowIndex == rows.lastIndex && tool != ToolType.HIGHLIGHTER) {
+                            // Custom color entry point at the end of the last row.
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, Divider, CircleShape)
+                                    .clickable { customOpen = true }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = "Custom color",
+                                    tint = MutedText,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                .clickable { onColor(c) }
-                        )
+                            }
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
                 Spacer(Modifier.height(18.dp))
                 Text("Width", style = MaterialTheme.typography.labelMedium, color = MutedText)
@@ -803,6 +842,52 @@ private fun PenOptionsDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+/** Simple HSV color picker: hue / saturation / brightness sliders with live preview. */
+@Composable
+private fun CustomColorDialog(
+    initialColor: Int,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialHsv = remember(initialColor) {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initialColor, it) }
+    }
+    var hue by remember { mutableStateOf(initialHsv[0]) }
+    var sat by remember { mutableStateOf(initialHsv[1]) }
+    var value by remember { mutableStateOf(initialHsv[2]) }
+    val preview = android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom color") },
+        text = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(preview))
+                        .border(1.dp, Divider, RoundedCornerShape(10.dp))
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Hue", style = MaterialTheme.typography.labelMedium, color = MutedText)
+                Slider(value = hue, onValueChange = { hue = it }, valueRange = 0f..360f)
+                Text("Saturation", style = MaterialTheme.typography.labelMedium, color = MutedText)
+                Slider(value = sat, onValueChange = { sat = it }, valueRange = 0f..1f)
+                Text("Brightness", style = MaterialTheme.typography.labelMedium, color = MutedText)
+                Slider(value = value, onValueChange = { value = it }, valueRange = 0f..1f)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onPick(preview) }) { Text("Use color") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
@@ -1167,7 +1252,7 @@ private fun QuestionActionsOverlay(
                                     Text(
                                         "Check my work",
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSecondary,
                                         modifier = Modifier.padding(
                                             horizontal = 12.dp, vertical = 7.dp
                                         )

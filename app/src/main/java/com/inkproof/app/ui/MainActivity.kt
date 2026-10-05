@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -19,8 +21,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val app = application as com.inkproof.app.InkProofApp
         setContent {
-            InkProofTheme {
+            val settings by app.settingsStore.settings
+                .collectAsState(initial = com.inkproof.app.data.settings.Settings())
+            InkProofTheme(themeMode = settings.appTheme) {
                 InkProofNavHost()
             }
         }

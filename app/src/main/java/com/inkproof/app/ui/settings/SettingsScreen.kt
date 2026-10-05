@@ -54,6 +54,9 @@ import com.inkproof.app.model.PenPalette
 import com.inkproof.app.ui.theme.Divider
 import com.inkproof.app.ui.theme.InkNavy
 import com.inkproof.app.ui.theme.MutedText
+import com.inkproof.app.ui.theme.ThemeMode
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -90,6 +93,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .padding(horizontal = 28.dp, vertical = 16.dp)
                 .widthIn(max = 720.dp)
         ) {
+            SectionHeader("Appearance")
+            SettingsCard {
+                ChoiceRow(
+                    title = "Theme",
+                    subtitle = "Pages keep their own paper color",
+                    options = listOf(
+                        ThemeMode.SYSTEM to "System",
+                        ThemeMode.LIGHT to "Light",
+                        ThemeMode.DARK to "Dark"
+                    ),
+                    selected = settings.appTheme
+                ) { scope.launch { store.setAppTheme(it) } }
+            }
+
             SectionHeader("Canvas")
             SettingsCard {
                 ToggleRow("Continue from last page", "Reopen notebooks where you left off",
@@ -240,6 +257,45 @@ private fun SettingsCard(content: @Composable () -> Unit) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column { content() }
+    }
+}
+
+@Composable
+private fun ChoiceRow(
+    title: String,
+    subtitle: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MutedText)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (value, label) ->
+                val isSelected = value == selected
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelect(value) }
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
     }
 }
 

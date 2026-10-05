@@ -136,7 +136,9 @@ private fun ResultContent(
         CheckStatus.INCORRECT -> Triple(ErrorRed, ErrorRedSoft, "First mistake found")
         CheckStatus.INCOMPLETE -> Triple(WarnAmber, WarnAmberSoft, "Incomplete")
         CheckStatus.UNCLEAR -> Triple(WarnAmber, WarnAmberSoft, "Hard to read")
-        CheckStatus.UNSUPPORTED -> Triple(MutedText, Color(0xFFEDEFF5), "Not supported yet")
+        CheckStatus.UNSUPPORTED -> Triple(
+            MutedText, MaterialTheme.colorScheme.surfaceVariant, "Not supported yet"
+        )
         CheckStatus.ERROR -> Triple(ErrorRed, ErrorRedSoft, "Something went wrong")
     }
 

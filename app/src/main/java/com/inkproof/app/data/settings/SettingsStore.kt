@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "inkproof_settings")
 
 data class Settings(
+    // Appearance: "system" | "light" | "dark"
+    val appTheme: String = "system",
     // Canvas
     val continueFromLastPage: Boolean = true,
     val keepScreenAwake: Boolean = true,
@@ -40,6 +42,7 @@ data class Settings(
 class SettingsStore(private val context: Context) {
 
     private object Keys {
+        val APP_THEME = stringPreferencesKey("app_theme")
         val CONTINUE_LAST = booleanPreferencesKey("continue_from_last_page")
         val KEEP_AWAKE = booleanPreferencesKey("keep_screen_awake")
         val FULL_SCREEN = booleanPreferencesKey("full_screen_canvas")
@@ -58,6 +61,7 @@ class SettingsStore(private val context: Context) {
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
         Settings(
+            appTheme = p[Keys.APP_THEME] ?: "system",
             continueFromLastPage = p[Keys.CONTINUE_LAST] ?: true,
             keepScreenAwake = p[Keys.KEEP_AWAKE] ?: true,
             fullScreenCanvas = p[Keys.FULL_SCREEN] ?: false,
@@ -74,6 +78,9 @@ class SettingsStore(private val context: Context) {
             lastPageByNotebook = p[Keys.LAST_PAGES] ?: ""
         )
     }
+
+    suspend fun setAppTheme(value: String) =
+        context.dataStore.edit { it[Keys.APP_THEME] = value }
 
     suspend fun setContinueFromLastPage(value: Boolean) =
         context.dataStore.edit { it[Keys.CONTINUE_LAST] = value }

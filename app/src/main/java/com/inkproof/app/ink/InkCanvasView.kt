@@ -182,6 +182,15 @@ class InkCanvasView @JvmOverloads constructor(
 
     // ----- paints -----
     private val backgroundPaint = Paint().apply { color = 0xFFECEEF3.toInt() }
+
+    /**
+     * Surrounding chrome color (outside the page). Follows the app theme;
+     * the PAGE itself keeps its chosen template/background.
+     */
+    fun setChromeColor(color: Int) {
+        backgroundPaint.color = color
+        invalidate()
+    }
     private val lassoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = 0xFF4B6BD6.toInt()
