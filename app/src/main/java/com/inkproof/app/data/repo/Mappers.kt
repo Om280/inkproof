@@ -3,11 +3,13 @@ package com.inkproof.app.data.repo
 import com.inkproof.app.data.db.QuestionEntity
 import com.inkproof.app.data.db.StrokeCodec
 import com.inkproof.app.data.db.StrokeEntity
+import com.inkproof.app.data.db.TextObjectEntity
 import com.inkproof.app.model.Question
 import com.inkproof.app.model.QuestionContentType
 import com.inkproof.app.model.ShapeType
 import com.inkproof.app.model.Stroke
 import com.inkproof.app.model.StrokeRole
+import com.inkproof.app.model.TextObject
 import com.inkproof.app.model.ToolType
 
 fun Stroke.toEntity(): StrokeEntity = StrokeEntity(
@@ -49,6 +51,32 @@ fun Question.toEntity(): QuestionEntity = QuestionEntity(
     solutionBottom = solutionBottom,
     contentVersion = contentVersion,
     solutionVersion = solutionVersion,
+    createdAt = createdAt
+)
+
+fun TextObject.toEntity(): TextObjectEntity = TextObjectEntity(
+    id = id,
+    pageId = pageId,
+    questionId = questionId,
+    text = text,
+    x = x,
+    y = y,
+    widthPts = widthPts,
+    fontSize = fontSize,
+    color = color,
+    createdAt = createdAt
+)
+
+fun TextObjectEntity.toModel(): TextObject = TextObject(
+    id = id,
+    pageId = pageId,
+    questionId = questionId,
+    text = text,
+    x = x,
+    y = y,
+    widthPts = widthPts,
+    fontSize = fontSize,
+    color = color,
     createdAt = createdAt
 )
 

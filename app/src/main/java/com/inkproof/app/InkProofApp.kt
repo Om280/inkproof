@@ -13,6 +13,7 @@ import com.inkproof.app.data.repo.CheckRepository
 import com.inkproof.app.data.repo.LibraryRepository
 import com.inkproof.app.data.repo.PageRepository
 import com.inkproof.app.data.settings.SettingsStore
+import com.inkproof.app.pdf.ImageImporter
 import com.inkproof.app.pdf.PdfExporter
 import com.inkproof.app.pdf.PdfImporter
 
@@ -32,6 +33,7 @@ class InkProofApp : Application() {
     val settingsStore: SettingsStore by lazy { SettingsStore(this) }
     val pdfImporter: PdfImporter by lazy { PdfImporter(this, libraryRepository) }
     val pdfExporter: PdfExporter by lazy { PdfExporter(this, libraryRepository, pageRepository) }
+    val imageImporter: ImageImporter by lazy { ImageImporter(this, libraryRepository) }
 
     private val mockProvider: CheckProvider by lazy { MockCheckProvider() }
     private val backendProvider: CheckProvider by lazy {
@@ -40,10 +42,12 @@ class InkProofApp : Application() {
     private val mockRecognizer: HandwritingRecognizer by lazy { MockRecognizer() }
     private val localRecognizer: HandwritingRecognizer by lazy { LocalDigitalInkRecognizer() }
 
-    fun checkEngine(mockMode: Boolean): CheckWorkEngine = CheckWorkEngine(
-        pageRepository = pageRepository,
-        checkRepository = checkRepository,
-        recognizer = if (mockMode) mockRecognizer else localRecognizer,
-        provider = if (mockMode) mockProvider else backendProvider
-    )
+    fun checkEngine(mockMode: Boolean, confidenceThreshold: Float = 0.4f): CheckWorkEngine =
+        CheckWorkEngine(
+            pageRepository = pageRepository,
+            checkRepository = checkRepository,
+            recognizer = if (mockMode) mockRecognizer else localRecognizer,
+            provider = if (mockMode) mockProvider else backendProvider,
+            confidenceThreshold = confidenceThreshold
+        )
 }

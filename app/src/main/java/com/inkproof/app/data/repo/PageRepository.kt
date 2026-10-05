@@ -70,6 +70,19 @@ class PageRepository(private val db: InkProofDatabase) {
     suspend fun questionStrokes(questionId: String): List<Stroke> =
         db.strokeDao().forQuestionRole(questionId, StrokeRole.QUESTION.name).map { it.toModel() }
 
+    // ----- Text objects -----
+
+    suspend fun textObjectsForPage(pageId: String): List<com.inkproof.app.model.TextObject> =
+        db.textObjectDao().forPage(pageId).map { it.toModel() }
+
+    suspend fun upsertTextObject(obj: com.inkproof.app.model.TextObject) {
+        db.textObjectDao().upsert(obj.toEntity())
+    }
+
+    suspend fun deleteTextObject(id: String) {
+        db.textObjectDao().delete(id)
+    }
+
     // ----- Questions -----
 
     fun observeQuestions(pageId: String): Flow<List<Question>> =

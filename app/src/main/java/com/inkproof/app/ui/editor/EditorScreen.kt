@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.HighlightAlt
 import androidx.compose.material.icons.outlined.Backspace
 import androidx.compose.material.icons.outlined.BorderColor
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -124,6 +125,10 @@ fun EditorScreen(
     var showQuestionComposer by remember { mutableStateOf(false) }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPageRail by remember { mutableStateOf(true) }
+    // TEXT tool tap target: (pageX, pageY, existing object or null).
+    var textDialog by remember {
+        mutableStateOf<Triple<Float, Float, com.inkproof.app.model.TextObject?>?>(null)
+    }
 
     // Keep screen awake while writing (setting).
     LaunchedEffect(settings.keepScreenAwake) {
@@ -132,6 +137,22 @@ fun EditorScreen(
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    // Full-screen canvas: hide system bars while the editor is open.
+    androidx.compose.runtime.DisposableEffect(settings.fullScreenCanvas) {
+        val window = (context as? Activity)?.window
+        val controller = window?.let {
+            androidx.core.view.WindowCompat.getInsetsController(it, it.decorView)
+        }
+        if (settings.fullScreenCanvas && controller != null) {
+            controller.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         }
     }
 
@@ -166,7 +187,8 @@ fun EditorScreen(
                 .getOrDefault(PageTemplate.RULED),
             strokes = content.strokes,
             questions = content.questions,
-            pdfBackground = content.pdfBackground
+            pdfBackground = content.pdfBackground,
+            textObjects = content.textObjects
         )
     }
 
@@ -249,6 +271,14 @@ fun EditorScreen(
                                 ) {
                                     viewModel.onStrokesMoved(before, after)
                                 }
+
+                                override fun onTextTap(
+                                    pageX: Float,
+                                    pageY: Float,
+                                    existing: com.inkproof.app.model.TextObject?
+                                ) {
+                                    textDialog = Triple(pageX, pageY, existing)
+                                }
                             }
                             canvasRef = view
                         }
@@ -298,7 +328,8 @@ fun EditorScreen(
                     state = checkState,
                     onDismiss = viewModel::dismissCheck,
                     onTryAgain = viewModel::dismissCheck,
-                    onRetryCheck = { qid, action -> viewModel.checkQuestion(qid, action) }
+                    onRetryCheck = { qid, action -> viewModel.checkQuestion(qid, action) },
+                    autoShowFirstHint = settings.autoShowHints
                 )
             }
         }
@@ -323,6 +354,71 @@ fun EditorScreen(
             }
         )
     }
+
+    textDialog?.let { (tapX, tapY, existing) ->
+        TextObjectDialog(
+            existing = existing,
+            onDismiss = { textDialog = null },
+            onSave = { text ->
+                val pageId = pageContent?.page?.id
+                if (pageId != null && text.isNotBlank()) {
+                    val obj = existing?.copy(text = text)
+                        ?: com.inkproof.app.model.TextObject(
+                            pageId = pageId, text = text, x = tapX, y = tapY
+                        )
+                    viewModel.addOrUpdateText(obj)
+                }
+                textDialog = null
+            },
+            onDelete = existing?.let { obj ->
+                {
+                    viewModel.deleteText(obj.id)
+                    textDialog = null
+                }
+            }
+        )
+    }
+}
+
+// ============================= text dialog =============================
+
+@Composable
+private fun TextObjectDialog(
+    existing: com.inkproof.app.model.TextObject?,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onDelete: (() -> Unit)?
+) {
+    var text by remember { mutableStateOf(existing?.text ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) "Add text" else "Edit text") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("Type text to place on the page…") },
+                minLines = 2,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank()) {
+                Text(if (existing == null) "Add" else "Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    )
 }
 
 // ============================= toolbar =============================
@@ -403,6 +499,11 @@ private fun EditorToolbar(
                 selected = penStyle.tool == ToolType.SHAPE,
                 icon = { Icon(Icons.Outlined.Category, "Shapes") },
                 onClick = { onTool(ToolType.SHAPE) }
+            )
+            ToolButton(
+                selected = penStyle.tool == ToolType.TEXT,
+                icon = { Icon(Icons.Outlined.TextFields, "Text") },
+                onClick = { onTool(ToolType.TEXT) }
             )
             ToolButton(
                 selected = penStyle.tool == ToolType.PAN,

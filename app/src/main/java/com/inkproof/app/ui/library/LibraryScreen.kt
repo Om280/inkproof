@@ -1,8 +1,13 @@
 package com.inkproof.app.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,6 +68,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.inkproof.app.data.db.FolderEntity
 import com.inkproof.app.data.db.NotebookEntity
 import com.inkproof.app.ui.theme.InkNavy
 import com.inkproof.app.ui.theme.MutedText
@@ -82,15 +88,24 @@ fun LibraryScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val navigateTo by viewModel.navigateTo.collectAsState()
+    val folders by viewModel.folders.collectAsState()
+    val selectedFolderId by viewModel.selectedFolderId.collectAsState()
 
     var showCreateMenu by remember { mutableStateOf(false) }
     var createDialog by remember { mutableStateOf<CreateKind?>(null) }
     var pendingPdfTitle by remember { mutableStateOf("") }
+    var newFolderDialog by remember { mutableStateOf(false) }
+    var folderOptionsFor by remember { mutableStateOf<FolderEntity?>(null) }
 
     val pdfLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) viewModel.importPdf(uri, pendingPdfTitle)
+    }
+    val imageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) viewModel.importImage(uri, "Imported image")
     }
 
     LaunchedEffect(navigateTo) {
@@ -101,7 +116,12 @@ fun LibraryScreen(
     }
     LaunchedEffect(notebooks) { viewModel.refreshThumbnails(notebooks) }
 
-    val shown = searchResults ?: notebooks
+    val shown = (searchResults ?: notebooks).let { list ->
+        // Folder filter applies only when not searching.
+        if (searchResults == null && selectedFolderId != null) {
+            list.filter { it.folderId == selectedFolderId }
+        } else list
+    }
     val favorites = shown.filter { it.favorite }
 
     Scaffold(
@@ -136,6 +156,18 @@ fun LibraryScreen(
                             showCreateMenu = false
                             pendingPdfTitle = "Imported PDF"
                             pdfLauncher.launch(arrayOf("application/pdf"))
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Import image") },
+                        leadingIcon = { Icon(Icons.Outlined.Image, null) },
+                        onClick = {
+                            showCreateMenu = false
+                            imageLauncher.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
                         }
                     )
                 }
@@ -181,6 +213,15 @@ fun LibraryScreen(
                     .padding(vertical = 12.dp)
             )
 
+            // Folder chips
+            FolderChipsRow(
+                folders = folders,
+                selectedFolderId = selectedFolderId,
+                onSelect = viewModel::selectFolder,
+                onNewFolder = { newFolderDialog = true },
+                onFolderOptions = { folderOptionsFor = it }
+            )
+
             if (shown.isEmpty()) {
                 EmptyLibrary()
             } else {
@@ -196,11 +237,13 @@ fun LibraryScreen(
                             NotebookCard(
                                 notebook = nb,
                                 thumbnail = thumbnails[nb.id],
+                                folders = folders,
                                 onOpen = { onOpenNotebook(nb.id) },
                                 onRename = { viewModel.rename(nb.id, it) },
                                 onDelete = { viewModel.delete(nb.id) },
                                 onDuplicate = { viewModel.duplicate(nb.id) },
-                                onToggleFavorite = { viewModel.toggleFavorite(nb) }
+                                onToggleFavorite = { viewModel.toggleFavorite(nb) },
+                                onMoveToFolder = { viewModel.moveToFolder(nb.id, it) }
                             )
                         }
                     }
@@ -211,11 +254,13 @@ fun LibraryScreen(
                         NotebookCard(
                             notebook = nb,
                             thumbnail = thumbnails[nb.id],
+                            folders = folders,
                             onOpen = { onOpenNotebook(nb.id) },
                             onRename = { viewModel.rename(nb.id, it) },
                             onDelete = { viewModel.delete(nb.id) },
                             onDuplicate = { viewModel.duplicate(nb.id) },
-                            onToggleFavorite = { viewModel.toggleFavorite(nb) }
+                            onToggleFavorite = { viewModel.toggleFavorite(nb) },
+                            onMoveToFolder = { viewModel.moveToFolder(nb.id, it) }
                         )
                     }
                 }
@@ -236,9 +281,145 @@ fun LibraryScreen(
             }
         )
     }
+
+    if (newFolderDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { newFolderDialog = false },
+            title = { Text("New folder") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Folder name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.createFolder(name); newFolderDialog = false },
+                    enabled = name.isNotBlank()
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { newFolderDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    folderOptionsFor?.let { folder ->
+        var name by remember(folder.id) { mutableStateOf(folder.name) }
+        AlertDialog(
+            onDismissRequest = { folderOptionsFor = null },
+            title = { Text("Folder") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Folder name") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Deleting a folder keeps its notebooks — they move back to the library.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedText
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renameFolder(folder.id, name)
+                        folderOptionsFor = null
+                    },
+                    enabled = name.isNotBlank()
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        viewModel.deleteFolder(folder.id)
+                        folderOptionsFor = null
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { folderOptionsFor = null }) { Text("Cancel") }
+                }
+            }
+        )
+    }
 }
 
 enum class CreateKind { NOTE, MATH }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolderChipsRow(
+    folders: List<FolderEntity>,
+    selectedFolderId: String?,
+    onSelect: (String?) -> Unit,
+    onNewFolder: () -> Unit,
+    onFolderOptions: (FolderEntity) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(bottom = 10.dp)
+    ) {
+        FolderChip(
+            label = "All",
+            selected = selectedFolderId == null,
+            onClick = { onSelect(null) }
+        )
+        folders.forEach { folder ->
+            FolderChip(
+                label = folder.name,
+                selected = selectedFolderId == folder.id,
+                onClick = { onSelect(folder.id) },
+                onLongClick = { onFolderOptions(folder) }
+            )
+        }
+        FolderChip(
+            label = "+ New folder",
+            selected = false,
+            onClick = onNewFolder
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolderChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (selected) InkNavy else MaterialTheme.colorScheme.surface,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+        else MaterialTheme.colorScheme.onSurface,
+        tonalElevation = if (selected) 0.dp else 1.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) InkNavy else MaterialTheme.colorScheme.outlineVariant
+        ),
+        modifier = Modifier.clip(RoundedCornerShape(50))
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            modifier = Modifier
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
 
 @Composable
 private fun CreateNotebookDialog(
@@ -285,15 +466,18 @@ private fun CreateNotebookDialog(
 private fun NotebookCard(
     notebook: NotebookEntity,
     thumbnail: android.graphics.Bitmap?,
+    folders: List<FolderEntity>,
     onOpen: () -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
     onDuplicate: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onMoveToFolder: (String?) -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var renameOpen by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
+    var moveOpen by remember { mutableStateOf(false) }
 
     Surface(
         shape = MaterialTheme.shapes.medium,
@@ -383,6 +567,10 @@ private fun NotebookCard(
                             onClick = { menuOpen = false; onDuplicate() }
                         )
                         DropdownMenuItem(
+                            text = { Text("Move to folder…") },
+                            onClick = { menuOpen = false; moveOpen = true }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                             onClick = { menuOpen = false; deleteConfirm = true }
                         )
@@ -405,6 +593,48 @@ private fun NotebookCard(
             },
             dismissButton = {
                 TextButton(onClick = { renameOpen = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (moveOpen) {
+        AlertDialog(
+            onDismissRequest = { moveOpen = false },
+            title = { Text("Move to folder") },
+            text = {
+                Column {
+                    if (folders.isEmpty()) {
+                        Text(
+                            "No folders yet. Create one from the folder row on the library screen.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MutedText
+                        )
+                    } else {
+                        Text(
+                            "No folder (library)",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onMoveToFolder(null); moveOpen = false }
+                                .padding(vertical = 10.dp)
+                        )
+                        folders.forEach { folder ->
+                            Text(
+                                folder.name +
+                                    if (notebook.folderId == folder.id) "  ✓" else "",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onMoveToFolder(folder.id); moveOpen = false }
+                                    .padding(vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { moveOpen = false }) { Text("Cancel") }
             }
         )
     }

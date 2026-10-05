@@ -22,7 +22,9 @@ import com.inkproof.app.model.Question
 import com.inkproof.app.model.Stroke
 import com.inkproof.app.model.StrokePoint
 import com.inkproof.app.model.StrokeRole
+import com.inkproof.app.model.TextObject
 import com.inkproof.app.model.ToolType
+import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -67,6 +69,12 @@ class InkCanvasView @JvmOverloads constructor(
 
         /** Camera (zoom) changed — for zoom indicators. */
         fun onCameraChanged(scale: Float) {}
+
+        /**
+         * TEXT tool tap: [existing] is the tapped text object (edit) or null
+         * (create a new one at the tapped page position).
+         */
+        fun onTextTap(pageX: Float, pageY: Float, existing: TextObject?) {}
     }
 
     var listener: Listener? = null
@@ -83,6 +91,12 @@ class InkCanvasView @JvmOverloads constructor(
 
     private var pdfBackground: Bitmap? = null
     private var questions: List<Question> = emptyList()
+    private var textObjects: List<TextObject> = emptyList()
+
+    // ----- text tool tap -----
+    private var textTapPending = false
+    private var textTapX = 0f
+    private var textTapY = 0f
 
     // ----- tool state -----
     var penStyle: PenStyle = PenStyle()
@@ -195,6 +209,7 @@ class InkCanvasView @JvmOverloads constructor(
         color = 0xFF222838.toInt()
         textSize = 34f
     }
+    private val textObjPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     init {
         setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -210,7 +225,8 @@ class InkCanvasView @JvmOverloads constructor(
         template: PageTemplate,
         strokes: List<Stroke>,
         questions: List<Question>,
-        pdfBackground: Bitmap?
+        pdfBackground: Bitmap?,
+        textObjects: List<TextObject> = emptyList()
     ) {
         this.pageId = pageId
         this.pageWidth = width
@@ -218,6 +234,7 @@ class InkCanvasView @JvmOverloads constructor(
         this.template = template
         this.questions = questions
         this.pdfBackground = pdfBackground
+        this.textObjects = textObjects
         this.strokes.clear()
         this.strokes.addAll(strokes)
         clearSelectionInternal()
@@ -233,6 +250,12 @@ class InkCanvasView @JvmOverloads constructor(
 
     fun setQuestions(questions: List<Question>) {
         this.questions = questions
+        invalidate()
+    }
+
+    fun setTextObjects(objects: List<TextObject>) {
+        this.textObjects = objects
+        pictureDirty = true
         invalidate()
     }
 
@@ -439,6 +462,11 @@ class InkCanvasView @JvmOverloads constructor(
                 lastNavX = event.getX(index)
                 lastNavY = event.getY(index)
             }
+            ToolType.TEXT -> {
+                textTapPending = true
+                textTapX = px
+                textTapY = py
+            }
             else -> {
                 drawing = true
                 activePoints.clear()
@@ -513,6 +541,13 @@ class InkCanvasView @JvmOverloads constructor(
     private fun finishActiveGesture(event: MotionEvent, cancelled: Boolean) {
         removeCallbacks(holdCheck)
         when {
+            textTapPending -> {
+                textTapPending = false
+                if (!cancelled) {
+                    listener?.onTextTap(textTapX, textTapY, hitTextObject(textTapX, textTapY))
+                }
+            }
+
             draggingSelection -> {
                 draggingSelection = false
                 if (!cancelled && (abs(dragDX) > 0.5f || abs(dragDY) > 0.5f)) {
@@ -869,12 +904,36 @@ class InkCanvasView @JvmOverloads constructor(
     private fun rebuildPicture() {
         val picture = Picture()
         val c = picture.beginRecording(pageWidth.toInt() + 1, pageHeight.toInt() + 1)
+        for (t in textObjects) {
+            textObjPaint.textSize = t.fontSize
+            textObjPaint.color = t.color
+            drawWrappedText(c, t.text, t.x, t.y, t.widthPts, textObjPaint)
+        }
         for (s in strokes) {
             StrokeRenderer.draw(c, s)
         }
         picture.endRecording()
         committedPicture = picture
         pictureDirty = false
+    }
+
+    // ----- text objects -----
+
+    private fun hitTextObject(px: Float, py: Float): TextObject? =
+        textObjects.lastOrNull { t ->
+            val height = estimateTextHeight(t)
+            px >= t.x - 8f && px <= t.x + t.widthPts + 8f &&
+                py >= t.y - t.fontSize - 8f && py <= t.y - t.fontSize + height + 8f
+        }
+
+    private fun estimateTextHeight(t: TextObject): Float {
+        textObjPaint.textSize = t.fontSize
+        var lines = 0
+        for (raw in t.text.split('\n')) {
+            val w = textObjPaint.measureText(raw.ifEmpty { " " })
+            lines += ceil((w / t.widthPts).toDouble()).toInt().coerceAtLeast(1)
+        }
+        return lines * t.fontSize * 1.3f + t.fontSize * 0.4f
     }
 
     private fun drawQuestionRegions(canvas: Canvas) {
@@ -886,7 +945,7 @@ class InkCanvasView @JvmOverloads constructor(
             // Typed/pasted question statements are rendered on the page.
             val text = q.typedText
             if (!text.isNullOrBlank()) {
-                drawWrappedText(canvas, text, 36f, q.questionTop + 78f, pageWidth - 72f)
+                drawWrappedText(canvas, text, 36f, q.questionTop + 78f, pageWidth - 72f, questionTextPaint)
             }
             // Solution band tint + label.
             canvas.drawRect(0f, q.solutionTop, pageWidth, q.solutionBottom, solutionTint)
@@ -903,13 +962,14 @@ class InkCanvasView @JvmOverloads constructor(
         text: String,
         x: Float,
         y: Float,
-        maxWidth: Float
+        maxWidth: Float,
+        paint: Paint
     ) {
         var cursorY = y
         for (rawLine in text.split('\n')) {
             var line = rawLine
             while (line.isNotEmpty()) {
-                val count = questionTextPaint.breakText(line, true, maxWidth, null)
+                val count = paint.breakText(line, true, maxWidth, null)
                 if (count <= 0) break
                 // Prefer breaking at a space.
                 var cut = count
@@ -917,11 +977,11 @@ class InkCanvasView @JvmOverloads constructor(
                     val lastSpace = line.substring(0, count).lastIndexOf(' ')
                     if (lastSpace > count / 2) cut = lastSpace + 1
                 }
-                canvas.drawText(line.substring(0, cut).trimEnd(), x, cursorY, questionTextPaint)
+                canvas.drawText(line.substring(0, cut).trimEnd(), x, cursorY, paint)
                 line = line.substring(cut)
-                cursorY += questionTextPaint.textSize * 1.3f
+                cursorY += paint.textSize * 1.3f
             }
-            if (rawLine.isEmpty()) cursorY += questionTextPaint.textSize * 1.3f
+            if (rawLine.isEmpty()) cursorY += paint.textSize * 1.3f
         }
     }
 

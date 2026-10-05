@@ -44,6 +44,12 @@ interface NotebookDao {
     @Query("UPDATE notebooks SET favorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: String, favorite: Boolean)
 
+    @Query("UPDATE notebooks SET folderId = :folderId, updatedAt = :now WHERE id = :id")
+    suspend fun moveToFolder(id: String, folderId: String?, now: Long)
+
+    @Query("UPDATE notebooks SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun clearFolder(folderId: String)
+
     @Query("UPDATE notebooks SET updatedAt = :now WHERE id = :id")
     suspend fun touch(id: String, now: Long)
 
@@ -205,4 +211,16 @@ interface MaintenanceDao {
 
     @Query("DELETE FROM questions WHERE pageId = :pageId")
     suspend fun deleteQuestionsForPage(pageId: String)
+
+    @Query("DELETE FROM text_objects WHERE pageId = :pageId")
+    suspend fun deleteTextForPage(pageId: String)
+
+    @Query("DELETE FROM text_objects WHERE pageId IN (SELECT id FROM pages WHERE notebookId = :notebookId)")
+    suspend fun deleteTextForNotebook(notebookId: String)
+
+    @Query("DELETE FROM image_objects WHERE pageId = :pageId")
+    suspend fun deleteImagesForPage(pageId: String)
+
+    @Query("DELETE FROM image_objects WHERE pageId IN (SELECT id FROM pages WHERE notebookId = :notebookId)")
+    suspend fun deleteImagesForNotebook(notebookId: String)
 }

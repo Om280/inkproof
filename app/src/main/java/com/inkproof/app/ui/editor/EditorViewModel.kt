@@ -19,6 +19,7 @@ import com.inkproof.app.model.PenStyle
 import com.inkproof.app.model.Question
 import com.inkproof.app.model.QuestionContentType
 import com.inkproof.app.model.Stroke
+import com.inkproof.app.model.TextObject
 import com.inkproof.app.model.ToolType
 import com.inkproof.app.model.newId
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ data class PageContent(
     val strokes: List<Stroke>,
     val questions: List<Question>,
     val pdfBackground: Bitmap?,
+    val textObjects: List<TextObject> = emptyList(),
     /** Monotonic token so re-loading the same page still refreshes the view. */
     val loadToken: Long
 )
@@ -116,7 +118,13 @@ class EditorViewModel(
                 pressureEnabled = s.pressureEnabled
             )
             val pageList = library.pagesFor(notebookId)
-            pageList.firstOrNull()?.let { selectPage(it.id) }
+            // Continue from last page when enabled and the page still exists.
+            val remembered = if (s.continueFromLastPage) {
+                com.inkproof.app.data.settings.SettingsStore
+                    .decodeLastPages(s.lastPageByNotebook)[notebookId]
+            } else null
+            val target = pageList.firstOrNull { it.id == remembered } ?: pageList.firstOrNull()
+            target?.let { selectPage(it.id) }
         }
     }
 
@@ -127,6 +135,7 @@ class EditorViewModel(
             val page = library.page(pageId) ?: return@launch
             val strokes = pageRepo.strokesForPage(pageId)
             val questions = pageRepo.questionsForPage(pageId)
+            val textObjects = pageRepo.textObjectsForPage(pageId)
             val pdf = page.pdfPath?.let { path ->
                 if (File(path).exists()) BitmapFactory.decodeFile(path) else null
             }
@@ -134,8 +143,10 @@ class EditorViewModel(
             updateUndoState()
             clearSelectionState()
             _checkState.value = CheckUiState.Hidden
-            _pageContent.value = PageContent(page, strokes, questions, pdf, ++loadCounter)
+            _pageContent.value =
+                PageContent(page, strokes, questions, pdf, textObjects, ++loadCounter)
             library.touchNotebook(notebookId)
+            app.settingsStore.setLastPage(notebookId, pageId)
         }
     }
 
@@ -318,18 +329,55 @@ class EditorViewModel(
 
     private suspend fun refreshQuestions() {
         val content = _pageContent.value ?: return
-        val questions = pageRepo.questionsForPage(content.page.id)
-        _pageContent.value = content.copy(questions = questions, loadToken = ++loadCounter)
+        // Re-read strokes too so recently drawn ink is never wiped from the view.
+        _pageContent.value = content.copy(
+            strokes = pageRepo.strokesForPage(content.page.id),
+            questions = pageRepo.questionsForPage(content.page.id),
+            loadToken = ++loadCounter
+        )
+    }
+
+    // ================= text objects =================
+
+    fun addOrUpdateText(obj: TextObject) {
+        val content = _pageContent.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            pageRepo.upsertTextObject(obj)
+            refreshTextObjects(content.page.id)
+        }
+    }
+
+    fun deleteText(id: String) {
+        val content = _pageContent.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            pageRepo.deleteTextObject(id)
+            refreshTextObjects(content.page.id)
+        }
+    }
+
+    private suspend fun refreshTextObjects(pageId: String) {
+        val content = _pageContent.value ?: return
+        if (content.page.id != pageId) return
+        // Re-read strokes too: content.strokes may be stale (ink drawn since
+        // the page load is persisted asynchronously) and must not be wiped.
+        _pageContent.value = content.copy(
+            strokes = pageRepo.strokesForPage(pageId),
+            textObjects = pageRepo.textObjectsForPage(pageId),
+            loadToken = ++loadCounter
+        )
     }
 
     // ================= CHECK MY WORK / SOLVE =================
 
+    private fun engine() = app.checkEngine(
+        mockMode = settings.value.mockMode,
+        confidenceThreshold = settings.value.recognitionConfidenceThreshold
+    )
+
     fun checkQuestion(questionId: String, action: CheckAction) {
         _checkState.value = CheckUiState.Loading(questionId, action)
         viewModelScope.launch(Dispatchers.IO) {
-            val mock = settings.value.mockMode
-            val engine = app.checkEngine(mock)
-            val response = engine.checkQuestion(questionId, action)
+            val response = engine().checkQuestion(questionId, action)
             _checkState.value = CheckUiState.Result(questionId, action, response)
         }
     }
@@ -339,9 +387,7 @@ class EditorViewModel(
         val (strokes, _) = _selection.value
         _checkState.value = CheckUiState.Loading(null, action)
         viewModelScope.launch(Dispatchers.IO) {
-            val mock = settings.value.mockMode
-            val engine = app.checkEngine(mock)
-            val response = engine.checkSelection(pageId, strokes, action)
+            val response = engine().checkSelection(pageId, strokes, action)
             _checkState.value = CheckUiState.Result(null, action, response)
         }
     }

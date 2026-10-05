@@ -106,4 +106,27 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setMockMode(value: Boolean) =
         context.dataStore.edit { it[Keys.MOCK_MODE] = value }
+
+    /** Remember the last open page per notebook ("Continue from last page"). */
+    suspend fun setLastPage(notebookId: String, pageId: String) =
+        context.dataStore.edit { prefs ->
+            val map = decodeLastPages(prefs[Keys.LAST_PAGES] ?: "").toMutableMap()
+            map[notebookId] = pageId
+            // Keep the map bounded.
+            while (map.size > 50) map.remove(map.keys.first())
+            prefs[Keys.LAST_PAGES] = encodeLastPages(map)
+        }
+
+    companion object {
+        fun decodeLastPages(encoded: String): Map<String, String> =
+            encoded.split(';')
+                .filter { it.contains('=') }
+                .associate {
+                    val idx = it.indexOf('=')
+                    it.substring(0, idx) to it.substring(idx + 1)
+                }
+
+        fun encodeLastPages(map: Map<String, String>): String =
+            map.entries.joinToString(";") { "${it.key}=${it.value}" }
+    }
 }

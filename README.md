@@ -28,8 +28,13 @@ Primary hardware target: **OnePlus Pad + OnePlus Stylo 2**.
 - **Templates** — blank, ruled, grid, dot grid, engineering grid, math
   worksheet. Switching templates never touches your ink.
 - **Hold-to-shape** — draw a rough shape, keep the pen down ~400 ms (tunable in
-  Settings) and it snaps to a clean line / circle / ellipse / rectangle /
-  square / triangle / polygon. Release early and your original ink is kept.
+  Settings) and it snaps to a clean line / arrow / circle / ellipse /
+  rectangle / square / triangle / polygon. Release early and your original ink
+  is kept.
+- **Text boxes** — tap with the Text tool to place typed text anywhere on the
+  page; tap an existing box to edit or delete it.
+- **Import image** — pick a photo from the gallery and it becomes a page you
+  can annotate (great for textbook problems).
 - **Math question pages** — a **Question is a first-class object** with its own
   content (typed, handwritten, pasted, imported), its own solution region,
   version counters and check history. Multiple questions per page are fully
@@ -194,10 +199,11 @@ read only from the environment; the Android client never contains them.
 cd backend && npm test             # backend tests
 ```
 
-Covered: stroke codec roundtrips, shape detection (line/circle/ellipse/
+Covered: stroke codec roundtrips, shape detection (line/arrow/circle/ellipse/
 rectangle/square/triangle, squiggle rejection), undo/redo, line segmentation,
 strict JSON parsing (including malformed AI output), mock scenarios,
-notebook/page persistence, page independence, question isolation (page A vs
+recognition-confidence thresholding (UNCLEAR, provider never called), folders,
+text-object persistence, notebook/page persistence, page independence, question isolation (page A vs
 page B, Q1/Q2/Q3), cache invalidation on solution edits, empty-input error
 states, backend schema validation, rate limiting and dedup cache.
 
@@ -222,8 +228,13 @@ with thousands of strokes, pinch-zoom smoothness.
   recognizer — the `HandwritingRecognizer` interface is designed for exactly
   that swap. When recognition confidence is low, InkProof reports UNCLEAR
   instead of guessing.
-- Arrow shape snapping, text boxes and image objects on the canvas are
-  modelled in the database but not yet fully editable in the UI.
+- Image objects as movable canvas elements are modelled in the database but
+  not yet editable in the UI — "Import image" brings a picture in as a page
+  you can write on instead.
+- Typed text boxes are placed/edited/deleted via tap dialogs; drag-to-move and
+  resize for text boxes are future refinements.
+- Physical validation on a OnePlus Pad + Stylo 2 has not been performed from
+  this environment and remains required.
 - PDF export flattens ink into the PDF (annotations are not embedded as PDF
   ink objects).
 - Question regions are vertical bands; free-positioned question frames are a

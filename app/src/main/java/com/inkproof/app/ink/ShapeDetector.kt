@@ -27,10 +27,64 @@ object ShapeDetector {
         val b = bounds(points)
         if (max(b.width, b.height) < MIN_SIZE) return null
 
+        detectArrow(points)?.let { return it }
         detectLine(points)?.let { return it }
         detectCircleOrEllipse(points)?.let { return it }
         detectPolygon(points)?.let { return it }
         return null
+    }
+
+    // ----- arrow -----
+
+    /**
+     * Single-stroke arrow: a dominant straight shaft followed by a short
+     * doubling-back arrowhead near the tip (corners only in the tail).
+     */
+    private fun detectArrow(points: List<StrokePoint>): DetectedShape? {
+        val n = points.size
+        val corners = findCorners(points)
+        if (corners.isEmpty()) return null
+        val firstCorner = corners.first()
+        // Shaft must dominate the stroke; all corners live in the tail.
+        if (firstCorner < n * 0.55f) return null
+
+        val start = points.first()
+        val tip = points[firstCorner]
+        val chord = hypot(tip.x - start.x, tip.y - start.y)
+        if (chord < MIN_SIZE) return null
+
+        val shaft = points.subList(0, firstCorner + 1)
+        val maxDev = shaft.maxOf { distanceToSegment(it, start, tip) }
+        if (maxDev > chord * 0.08f + 6f) return null
+
+        // The tail must stay close to the tip (it is the head, not a new edge).
+        val tail = points.subList(firstCorner, n)
+        val headSpan = tail.maxOf { hypot(it.x - tip.x, it.y - tip.y) }
+        if (headSpan > chord * 0.45f || headSpan < chord * 0.07f) return null
+
+        val angle = atan2(tip.y - start.y, tip.x - start.x).toDouble()
+        val headLen = headSpan.coerceIn(chord * 0.12f, chord * 0.3f)
+        val a1 = angle + Math.toRadians(150.0)
+        val a2 = angle - Math.toRadians(150.0)
+        val barb1 = StrokePoint(
+            tip.x + headLen * cos(a1).toFloat(),
+            tip.y + headLen * sin(a1).toFloat(), 0.7f, 2
+        )
+        val barb2 = StrokePoint(
+            tip.x + headLen * cos(a2).toFloat(),
+            tip.y + headLen * sin(a2).toFloat(), 0.7f, 4
+        )
+        return DetectedShape(
+            type = ShapeType.ARROW,
+            points = listOf(
+                StrokePoint(start.x, start.y, 0.7f, 0),
+                StrokePoint(tip.x, tip.y, 0.7f, 1),
+                barb1,
+                StrokePoint(tip.x, tip.y, 0.7f, 3),
+                barb2
+            ),
+            confidence = 0.8f
+        )
     }
 
     // ----- line / arrow -----

@@ -112,6 +112,25 @@ class ShapeDetectorTest {
     }
 
     @Test
+    fun `arrow is detected from shaft plus doubled-back head`() {
+        // Shaft left->right (densely sampled, like real ink), then the head:
+        // back-up to a barb, return to the tip, back-down to the other barb.
+        val shaft = interpolate(listOf(0f to 0f, 260f to 0f), perEdge = 36)
+        val head = interpolate(
+            listOf(260f to 0f, 228f to 22f, 258f to 2f, 228f to -22f),
+            perEdge = 6
+        )
+        val points = (shaft + head.drop(1)).mapIndexed { i, p -> p.copy(t = i.toLong()) }
+        val shape = ShapeDetector.detect(points)
+        assertNotNull(shape)
+        assertEquals(ShapeType.ARROW, shape!!.type)
+        assertEquals(5, shape.points.size)
+        // Tip is at the end of the shaft.
+        assertEquals(260f, shape.points[1].x, 8f)
+        assertEquals(0f, shape.points[1].y, 8f)
+    }
+
+    @Test
     fun `tiny strokes are never snapped`() {
         val points = interpolate(listOf(0f to 0f, 10f to 1f))
         assertNull(ShapeDetector.detect(points))

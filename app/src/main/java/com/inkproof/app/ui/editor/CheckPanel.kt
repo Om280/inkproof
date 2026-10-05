@@ -64,7 +64,8 @@ fun CheckPanel(
     state: CheckUiState,
     onDismiss: () -> Unit,
     onTryAgain: () -> Unit,
-    onRetryCheck: (String, CheckAction) -> Unit
+    onRetryCheck: (String, CheckAction) -> Unit,
+    autoShowFirstHint: Boolean = false
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -103,7 +104,8 @@ fun CheckPanel(
                 questionId = state.questionId,
                 onDismiss = onDismiss,
                 onTryAgain = onTryAgain,
-                onRetryCheck = onRetryCheck
+                onRetryCheck = onRetryCheck,
+                autoShowFirstHint = autoShowFirstHint
             )
         }
     }
@@ -116,9 +118,17 @@ private fun ResultContent(
     questionId: String?,
     onDismiss: () -> Unit,
     onTryAgain: () -> Unit,
-    onRetryCheck: (String, CheckAction) -> Unit
+    onRetryCheck: (String, CheckAction) -> Unit,
+    autoShowFirstHint: Boolean = false
 ) {
-    var hintsRevealed by remember(response) { mutableIntStateOf(0) }
+    // When enabled in settings, the first hint is revealed automatically
+    // for a wrong/incomplete answer (never the full solution).
+    val initialHints =
+        if (autoShowFirstHint &&
+            response.hints.isNotEmpty() &&
+            (response.status == CheckStatus.INCORRECT || response.status == CheckStatus.INCOMPLETE)
+        ) 1 else 0
+    var hintsRevealed by remember(response) { mutableIntStateOf(initialHints) }
     var solutionRevealed by remember(response) { mutableStateOf(false) }
 
     val (headerColor, headerBg, headerText) = when (response.status) {

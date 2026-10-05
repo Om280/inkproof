@@ -94,6 +94,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                     settings.keepScreenAwake) {
                     scope.launch { store.setKeepScreenAwake(it) }
                 }
+                ToggleRow("Full-screen canvas", "Hide system bars while writing",
+                    settings.fullScreenCanvas) {
+                    scope.launch { store.setFullScreenCanvas(it) }
+                }
                 ToggleRow(
                     "Finger writing",
                     "Off: stylus writes, fingers navigate (recommended with Stylo 2)",

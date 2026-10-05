@@ -31,8 +31,19 @@ class LibraryRepository(private val db: InkProofDatabase) {
         return folder
     }
 
+    /** Deleting a folder moves its notebooks back to the workspace root. */
     suspend fun deleteFolder(id: String) {
+        db.notebookDao().clearFolder(id)
         db.folderDao().delete(id)
+    }
+
+    suspend fun renameFolder(id: String, name: String) {
+        val folder = db.folderDao().byId(id) ?: return
+        db.folderDao().upsert(folder.copy(name = name, updatedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun moveNotebookToFolder(notebookId: String, folderId: String?) {
+        db.notebookDao().moveToFolder(notebookId, folderId, System.currentTimeMillis())
     }
 
     suspend fun createNotebook(
@@ -65,9 +76,11 @@ class LibraryRepository(private val db: InkProofDatabase) {
     }
 
     suspend fun deleteNotebook(id: String) {
-        // Cascade delete: strokes/questions -> pages -> notebook.
+        // Cascade delete: strokes/questions/objects -> pages -> notebook.
         db.maintenanceDao().deleteStrokesForNotebook(id)
         db.maintenanceDao().deleteQuestionsForNotebook(id)
+        db.maintenanceDao().deleteTextForNotebook(id)
+        db.maintenanceDao().deleteImagesForNotebook(id)
         db.maintenanceDao().deletePagesForNotebook(id)
         db.notebookDao().delete(id)
     }
@@ -135,6 +148,8 @@ class LibraryRepository(private val db: InkProofDatabase) {
     suspend fun deletePage(pageId: String) {
         db.maintenanceDao().deleteStrokesForPage(pageId)
         db.maintenanceDao().deleteQuestionsForPage(pageId)
+        db.maintenanceDao().deleteTextForPage(pageId)
+        db.maintenanceDao().deleteImagesForPage(pageId)
         db.pageDao().delete(pageId)
     }
 
@@ -143,6 +158,11 @@ class LibraryRepository(private val db: InkProofDatabase) {
             db.pageDao().setOrder(pageId, index)
         }
         db.notebookDao().touch(notebookId, System.currentTimeMillis())
+    }
+
+    /** Direct page update (used by importers to adjust page size). */
+    suspend fun upsertPage(page: PageEntity) {
+        db.pageDao().upsert(page)
     }
 
     /** Changing templates never destroys content. */

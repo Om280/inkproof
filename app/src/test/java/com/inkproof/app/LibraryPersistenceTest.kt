@@ -158,4 +158,59 @@ class LibraryPersistenceTest {
         assertEquals(1, library.search("4x + 1").size)
         assertTrue(library.search("nonexistent-xyz").isEmpty())
     }
+
+    @Test
+    fun `move notebook into folder and delete folder keeps notebook`() = runBlocking {
+        val folder = library.createFolder("Physics")
+        val nb = library.createNotebook("Mechanics")
+
+        library.moveNotebookToFolder(nb.id, folder.id)
+        assertEquals(folder.id, library.notebook(nb.id)!!.folderId)
+
+        library.moveNotebookToFolder(nb.id, null)
+        assertNull(library.notebook(nb.id)!!.folderId)
+
+        library.moveNotebookToFolder(nb.id, folder.id)
+        library.deleteFolder(folder.id)
+        // Notebook survives folder deletion and is back in the root library.
+        val after = library.notebook(nb.id)
+        assertNotNull(after)
+        assertNull(after!!.folderId)
+    }
+
+    @Test
+    fun `rename folder persists`() = runBlocking {
+        val folder = library.createFolder("Chem")
+        library.renameFolder(folder.id, "Chemistry")
+        assertEquals("Chemistry", db.folderDao().byId(folder.id)!!.name)
+    }
+
+    @Test
+    fun `text objects persist per page and are deleted with the notebook`() = runBlocking {
+        val nb = library.createNotebook("Notes")
+        val pageA = library.pagesFor(nb.id).first()
+        val pageB = library.createPage(nb.id)
+
+        val obj = com.inkproof.app.model.TextObject(
+            pageId = pageA.id, text = "Remember the chain rule", x = 100f, y = 200f
+        )
+        pages.upsertTextObject(obj)
+
+        // Isolation: text belongs ONLY to page A.
+        assertEquals(1, pages.textObjectsForPage(pageA.id).size)
+        assertTrue(pages.textObjectsForPage(pageB.id).isEmpty())
+
+        // Edit round-trip.
+        pages.upsertTextObject(obj.copy(text = "Updated"))
+        assertEquals("Updated", pages.textObjectsForPage(pageA.id).single().text)
+
+        // Explicit delete.
+        pages.deleteTextObject(obj.id)
+        assertTrue(pages.textObjectsForPage(pageA.id).isEmpty())
+
+        // Cascade: deleting the notebook purges any remaining text objects.
+        pages.upsertTextObject(obj)
+        library.deleteNotebook(nb.id)
+        assertTrue(pages.textObjectsForPage(pageA.id).isEmpty())
+    }
 }

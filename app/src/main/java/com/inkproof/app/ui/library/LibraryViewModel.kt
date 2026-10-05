@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.inkproof.app.InkProofApp
+import com.inkproof.app.data.db.FolderEntity
 import com.inkproof.app.data.db.NotebookEntity
 import com.inkproof.app.ink.ThumbnailRenderer
 import com.inkproof.app.model.PageKind
@@ -25,6 +26,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     val notebooks: StateFlow<List<NotebookEntity>> = library.observeNotebooks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val folders: StateFlow<List<FolderEntity>> = library.observeFolders()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** null = show everything. */
+    private val _selectedFolderId = MutableStateFlow<String?>(null)
+    val selectedFolderId: StateFlow<String?> = _selectedFolderId
+
+    fun selectFolder(folderId: String?) { _selectedFolderId.value = folderId }
 
     private val _thumbnails = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
     val thumbnails: StateFlow<Map<String, Bitmap>> = _thumbnails
@@ -83,6 +93,35 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             val id = app.pdfImporter.import(uri, title.ifBlank { "Imported PDF" })
             if (id != null) _navigateTo.value = id
         }
+    }
+
+    fun importImage(uri: Uri, title: String) {
+        viewModelScope.launch {
+            val id = app.imageImporter.import(uri, title.ifBlank { "Imported image" })
+            if (id != null) _navigateTo.value = id
+        }
+    }
+
+    fun createFolder(name: String) {
+        viewModelScope.launch {
+            val folder = library.createFolder(name.ifBlank { "Folder" })
+            _selectedFolderId.value = folder.id
+        }
+    }
+
+    fun deleteFolder(id: String) {
+        viewModelScope.launch {
+            library.deleteFolder(id)
+            if (_selectedFolderId.value == id) _selectedFolderId.value = null
+        }
+    }
+
+    fun renameFolder(id: String, name: String) {
+        viewModelScope.launch { library.renameFolder(id, name) }
+    }
+
+    fun moveToFolder(notebookId: String, folderId: String?) {
+        viewModelScope.launch { library.moveNotebookToFolder(notebookId, folderId) }
     }
 
     fun rename(id: String, title: String) {

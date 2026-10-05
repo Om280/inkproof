@@ -32,8 +32,14 @@ class CheckWorkEngine(
     private val pageRepository: PageRepository,
     private val checkRepository: CheckRepository,
     private val recognizer: HandwritingRecognizer,
-    private val provider: CheckProvider
+    private val provider: CheckProvider,
+    /** Below this recognition confidence InkProof reports UNCLEAR. */
+    private val confidenceThreshold: Float = 0.4f
 ) {
+
+    private fun tooUncertain(result: RecognitionResult): Boolean =
+        result.uncertain || result.lines.isEmpty() ||
+            result.confidence < confidenceThreshold
 
     /** Check one specific question. Other questions/pages are never touched. */
     suspend fun checkQuestion(questionId: String, action: CheckAction): CheckResponse {
@@ -77,7 +83,7 @@ class CheckWorkEngine(
                 )
             }
             val recognition = recognizer.recognize(solutionStrokes)
-            if (recognition.uncertain || recognition.lines.isEmpty()) {
+            if (tooUncertain(recognition)) {
                 return CheckResponse(
                     status = CheckStatus.UNCLEAR,
                     questionEcho = questionText,
@@ -139,7 +145,7 @@ class CheckWorkEngine(
         }
 
         val recognition = recognizer.recognize(selectedStrokes)
-        if (recognition.uncertain || recognition.lines.isEmpty()) {
+        if (tooUncertain(recognition)) {
             return CheckResponse(
                 status = CheckStatus.UNCLEAR,
                 summary = "I couldn't confidently read this selection.",
@@ -190,7 +196,7 @@ class CheckWorkEngine(
                 val strokes = pageRepository.questionStrokes(question.id)
                 if (strokes.isEmpty()) return Triple("", "handwritten", 0f)
                 val recognition = recognizer.recognize(strokes)
-                if (recognition.uncertain || recognition.lines.isEmpty()) return null
+                if (tooUncertain(recognition)) return null
                 Triple(
                     recognition.lines.joinToString(" ") { it.text },
                     "handwritten",
