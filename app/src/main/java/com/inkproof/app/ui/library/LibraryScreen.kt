@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -107,6 +108,12 @@ fun LibraryScreen(
     ) { uri ->
         if (uri != null) viewModel.importImage(uri, "Imported image")
     }
+    val anyFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.importAny(uri)
+    }
+    val importError by viewModel.importError.collectAsState()
 
     LaunchedEffect(navigateTo) {
         navigateTo?.let {
@@ -168,6 +175,14 @@ fun LibraryScreen(
                                     ActivityResultContracts.PickVisualMedia.ImageOnly
                                 )
                             )
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Import file…") },
+                        leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
+                        onClick = {
+                            showCreateMenu = false
+                            anyFileLauncher.launch(arrayOf("*/*"))
                         }
                     )
                 }
@@ -278,6 +293,17 @@ fun LibraryScreen(
                     CreateKind.MATH -> viewModel.createMathQuestion(title)
                 }
                 createDialog = null
+            }
+        )
+    }
+
+    importError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.consumeImportError() },
+            title = { Text("Can't import this file") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.consumeImportError() }) { Text("OK") }
             }
         )
     }

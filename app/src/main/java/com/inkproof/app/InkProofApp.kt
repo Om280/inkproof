@@ -16,6 +16,7 @@ import com.inkproof.app.data.settings.SettingsStore
 import com.inkproof.app.pdf.ImageImporter
 import com.inkproof.app.pdf.PdfExporter
 import com.inkproof.app.pdf.PdfImporter
+import com.inkproof.app.pdf.TextImporter
 
 /**
  * Manual dependency wiring — small, explicit and easy to test.
@@ -34,6 +35,9 @@ class InkProofApp : Application() {
     val pdfImporter: PdfImporter by lazy { PdfImporter(this, libraryRepository) }
     val pdfExporter: PdfExporter by lazy { PdfExporter(this, libraryRepository, pageRepository) }
     val imageImporter: ImageImporter by lazy { ImageImporter(this, libraryRepository) }
+    val textImporter: TextImporter by lazy {
+        TextImporter(this, libraryRepository, pageRepository)
+    }
 
     private val mockProvider: CheckProvider by lazy { MockCheckProvider() }
     private val mockRecognizer: HandwritingRecognizer by lazy { MockRecognizer() }

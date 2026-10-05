@@ -10,6 +10,7 @@ import com.inkproof.app.data.db.FolderEntity
 import com.inkproof.app.data.db.NotebookEntity
 import com.inkproof.app.ink.ThumbnailRenderer
 import com.inkproof.app.model.PageKind
+import com.inkproof.app.pdf.ImportClassifier
 import com.inkproof.app.model.PageTemplate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,6 +100,49 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val id = app.imageImporter.import(uri, title.ifBlank { "Imported image" })
             if (id != null) _navigateTo.value = id
+        }
+    }
+
+    /** Message explaining why an import was rejected (or failed); null = no error. */
+    private val _importError = MutableStateFlow<String?>(null)
+    val importError: StateFlow<String?> = _importError
+    fun consumeImportError() { _importError.value = null }
+
+    /**
+     * Universal import entry point: classify the picked file, route supported
+     * formats to the right importer, reject the rest with a clear reason.
+     */
+    fun importAny(uri: Uri) {
+        viewModelScope.launch {
+            val resolver = getApplication<Application>().contentResolver
+            val mime = runCatching { resolver.getType(uri) }.getOrNull()
+            val name = runCatching {
+                resolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }.getOrNull()
+            val title = name?.substringBeforeLast('.')?.ifBlank { null } ?: "Imported file"
+
+            val result = ImportClassifier.classify(mime, name)
+            val id = when (result.kind) {
+                ImportClassifier.Kind.PDF -> app.pdfImporter.import(uri, title)
+                ImportClassifier.Kind.IMAGE -> app.imageImporter.import(uri, title)
+                ImportClassifier.Kind.TEXT,
+                ImportClassifier.Kind.HTML,
+                ImportClassifier.Kind.CSV ->
+                    app.textImporter.import(uri, title, result.kind)
+                ImportClassifier.Kind.UNSUPPORTED -> {
+                    _importError.value = result.reason
+                    return@launch
+                }
+            }
+            if (id != null) {
+                _navigateTo.value = id
+            } else {
+                _importError.value =
+                    "Couldn't read this file. It may be empty, corrupted, or protected."
+            }
         }
     }
 
