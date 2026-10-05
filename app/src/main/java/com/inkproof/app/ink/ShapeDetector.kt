@@ -49,11 +49,23 @@ object ShapeDetector {
         if (firstCorner < n * 0.55f) return null
 
         val start = points.first()
-        val tip = points[firstCorner]
+        // The corner finder reports a point slightly inside the turn; the real
+        // tip is the farthest point from the start in the head region (the
+        // barbs double back toward the start, so they are always closer).
+        var tipIndex = firstCorner
+        var tipDist = 0f
+        for (i in (firstCorner - n / 10).coerceAtLeast(0) until n) {
+            val d = hypot(points[i].x - start.x, points[i].y - start.y)
+            if (d > tipDist) {
+                tipDist = d
+                tipIndex = i
+            }
+        }
+        val tip = points[tipIndex]
         val chord = hypot(tip.x - start.x, tip.y - start.y)
         if (chord < MIN_SIZE) return null
 
-        val shaft = points.subList(0, firstCorner + 1)
+        val shaft = points.subList(0, minOf(firstCorner, tipIndex) + 1)
         val maxDev = shaft.maxOf { distanceToSegment(it, start, tip) }
         if (maxDev > chord * 0.08f + 6f) return null
 
