@@ -160,6 +160,29 @@ class LibraryPersistenceTest {
     }
 
     @Test
+    fun `reordering pages persists and keeps content attached`() = runBlocking {
+        val nb = library.createNotebook("Notes")
+        val p1 = library.pagesFor(nb.id).first()
+        val p2 = library.createPage(nb.id)
+        val p3 = library.createPage(nb.id)
+        pages.addStroke(stroke(p3.id))
+
+        library.movePage(p3.id, -1) // p1, p3, p2
+        assertEquals(listOf(p1.id, p3.id, p2.id), library.pagesFor(nb.id).map { it.id })
+
+        library.movePage(p1.id, 1) // p3, p1, p2
+        assertEquals(listOf(p3.id, p1.id, p2.id), library.pagesFor(nb.id).map { it.id })
+
+        // Content stays with its page, never with the slot.
+        assertEquals(1, pages.strokesForPage(p3.id).size)
+        assertTrue(pages.strokesForPage(p1.id).isEmpty())
+
+        // Out-of-range moves are safe no-ops.
+        library.movePage(p3.id, -1)
+        assertEquals(listOf(p3.id, p1.id, p2.id), library.pagesFor(nb.id).map { it.id })
+    }
+
+    @Test
     fun `move notebook into folder and delete folder keeps notebook`() = runBlocking {
         val folder = library.createFolder("Physics")
         val nb = library.createNotebook("Mechanics")

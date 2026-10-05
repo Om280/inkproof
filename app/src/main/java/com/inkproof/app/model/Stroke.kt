@@ -59,6 +59,18 @@ data class Stroke(
 
     fun translated(dx: Float, dy: Float): Stroke =
         copy(points = points.map { it.copy(x = it.x + dx, y = it.y + dy) })
+
+    /** Scale around a pivot; the rendered width scales by the mean factor. */
+    fun scaled(sx: Float, sy: Float, pivotX: Float, pivotY: Float): Stroke =
+        copy(
+            points = points.map {
+                it.copy(
+                    x = pivotX + (it.x - pivotX) * sx,
+                    y = pivotY + (it.y - pivotY) * sy
+                )
+            },
+            baseWidth = (baseWidth * (sx + sy) / 2f).coerceIn(0.5f, 60f)
+        )
 }
 
 data class Bounds(val left: Float, val top: Float, val right: Float, val bottom: Float) {

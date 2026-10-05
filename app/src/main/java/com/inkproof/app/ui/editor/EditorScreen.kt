@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
@@ -69,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -122,6 +125,7 @@ fun EditorScreen(
     val title by viewModel.notebookTitle.collectAsState()
 
     var canvasRef by remember { mutableStateOf<InkCanvasView?>(null) }
+    var shapeKind by remember { mutableStateOf(com.inkproof.app.model.ShapeType.RECTANGLE) }
     var showQuestionComposer by remember { mutableStateOf(false) }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPageRail by remember { mutableStateOf(true) }
@@ -193,12 +197,13 @@ fun EditorScreen(
     }
 
     // Keep tool config in sync.
-    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, canvasRef) {
+    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, shapeKind, canvasRef) {
         canvasRef?.let {
             it.penStyle = penStyle
             it.holdToShapeMs = settings.holdToShapeMs
             it.fingerWritingEnabled = settings.fingerWriting
             it.eraserRadiusPage = settings.eraserRadius
+            it.activeShapeKind = shapeKind
         }
     }
 
@@ -209,6 +214,10 @@ fun EditorScreen(
             canUndo = canUndo,
             canRedo = canRedo,
             isQuestionPage = pageContent?.page?.kind == PageKind.MATH_QUESTION.name,
+            shapeKind = shapeKind,
+            onShapeKind = { shapeKind = it },
+            eraserRadius = settings.eraserRadius,
+            onEraserRadius = viewModel::setEraserRadius,
             onBack = onBack,
             onTool = viewModel::setTool,
             onColor = viewModel::setColor,
@@ -232,6 +241,7 @@ fun EditorScreen(
                     pages = pages,
                     currentPageId = pageContent?.page?.id,
                     onSelect = viewModel::selectPage,
+                    onMove = { pageId, delta -> viewModel.movePage(pageId, delta) },
                     onAdd = {
                         viewModel.addPage(
                             if (pageContent?.page?.kind == PageKind.MATH_QUESTION.name)
@@ -294,9 +304,33 @@ fun EditorScreen(
                         onCheck = { viewModel.checkSelection(CheckAction.CHECK) },
                         onSolve = { viewModel.checkSelection(CheckAction.SOLVE) },
                         onCopy = viewModel::copySelection,
+                        onCut = {
+                            viewModel.copySelection()
+                            canvasRef?.deleteSelection()
+                        },
+                        onDuplicate = {
+                            viewModel.copySelection()
+                            viewModel.paste()
+                        },
                         onDelete = { canvasRef?.deleteSelection() },
                         onRecolor = { color -> canvasRef?.recolorSelection(color) },
+                        onWidth = { w -> canvasRef?.setSelectionWidth(w) },
                         onDismiss = { canvasRef?.clearSelection() }
+                    )
+                }
+
+                // ----- page navigation pill -----
+                val pageIndex = pages.indexOfFirst { it.id == pageContent?.page?.id }
+                if (pages.isNotEmpty() && pageIndex >= 0) {
+                    PageNavPill(
+                        index = pageIndex,
+                        count = pages.size,
+                        onPrev = { viewModel.selectPage(pages[pageIndex - 1].id) },
+                        onNext = { viewModel.selectPage(pages[pageIndex + 1].id) },
+                        onShowPages = { showPageRail = !showPageRail },
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(16.dp)
                     )
                 }
 
@@ -430,6 +464,10 @@ private fun EditorToolbar(
     canUndo: Boolean,
     canRedo: Boolean,
     isQuestionPage: Boolean,
+    shapeKind: com.inkproof.app.model.ShapeType,
+    onShapeKind: (com.inkproof.app.model.ShapeType) -> Unit,
+    eraserRadius: Float,
+    onEraserRadius: (Float) -> Unit,
     onBack: () -> Unit,
     onTool: (ToolType) -> Unit,
     onColor: (Int) -> Unit,
@@ -485,21 +523,82 @@ private fun EditorToolbar(
                     else onTool(ToolType.HIGHLIGHTER)
                 }
             )
-            ToolButton(
-                selected = penStyle.tool == ToolType.ERASER,
-                icon = { Icon(Icons.Outlined.Backspace, "Eraser") },
-                onClick = { onTool(ToolType.ERASER) }
-            )
+            Box {
+                var eraserMenu by remember { mutableStateOf(false) }
+                ToolButton(
+                    selected = penStyle.tool == ToolType.ERASER,
+                    icon = { Icon(Icons.Outlined.Backspace, "Eraser") },
+                    onClick = {
+                        if (penStyle.tool == ToolType.ERASER) eraserMenu = true
+                        else onTool(ToolType.ERASER)
+                    }
+                )
+                DropdownMenu(expanded = eraserMenu, onDismissRequest = { eraserMenu = false }) {
+                    listOf("Small" to 10f, "Medium" to 18f, "Large" to 34f).forEach { (label, r) ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    label,
+                                    fontWeight = if (eraserRadius == r) FontWeight.Bold else null
+                                )
+                            },
+                            leadingIcon = {
+                                Box(
+                                    Modifier
+                                        .size((r / 1.6f).dp)
+                                        .clip(CircleShape)
+                                        .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                )
+                            },
+                            onClick = { onEraserRadius(r); eraserMenu = false }
+                        )
+                    }
+                }
+            }
             ToolButton(
                 selected = penStyle.tool == ToolType.LASSO,
                 icon = { Icon(Icons.Outlined.HighlightAlt, "Lasso") },
                 onClick = { onTool(ToolType.LASSO) }
             )
-            ToolButton(
-                selected = penStyle.tool == ToolType.SHAPE,
-                icon = { Icon(Icons.Outlined.Category, "Shapes") },
-                onClick = { onTool(ToolType.SHAPE) }
-            )
+            Box {
+                var shapesMenu by remember { mutableStateOf(false) }
+                ToolButton(
+                    selected = penStyle.tool == ToolType.SHAPE,
+                    icon = { Icon(Icons.Outlined.Category, "Shapes") },
+                    onClick = {
+                        if (penStyle.tool == ToolType.SHAPE) shapesMenu = true
+                        else {
+                            onTool(ToolType.SHAPE)
+                            shapesMenu = true
+                        }
+                    }
+                )
+                DropdownMenu(expanded = shapesMenu, onDismissRequest = { shapesMenu = false }) {
+                    listOf(
+                        com.inkproof.app.model.ShapeType.LINE to "Line",
+                        com.inkproof.app.model.ShapeType.ARROW to "Arrow",
+                        com.inkproof.app.model.ShapeType.RECTANGLE to "Rectangle",
+                        com.inkproof.app.model.ShapeType.SQUARE to "Square",
+                        com.inkproof.app.model.ShapeType.CIRCLE to "Circle",
+                        com.inkproof.app.model.ShapeType.ELLIPSE to "Ellipse",
+                        com.inkproof.app.model.ShapeType.TRIANGLE to "Triangle"
+                    ).forEach { (kind, label) ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    label,
+                                    fontWeight = if (shapeKind == kind) FontWeight.Bold else null
+                                )
+                            },
+                            onClick = {
+                                onShapeKind(kind)
+                                onTool(ToolType.SHAPE)
+                                shapesMenu = false
+                            }
+                        )
+                    }
+                }
+            }
             ToolButton(
                 selected = penStyle.tool == ToolType.TEXT,
                 icon = { Icon(Icons.Outlined.TextFields, "Text") },
@@ -715,6 +814,7 @@ private fun PageRail(
     pages: List<com.inkproof.app.data.db.PageEntity>,
     currentPageId: String?,
     onSelect: (String) -> Unit,
+    onMove: (String, Int) -> Unit,
     onAdd: () -> Unit
 ) {
     Surface(
@@ -733,7 +833,10 @@ private fun PageRail(
                     index = index,
                     pageId = page.id,
                     selected = page.id == currentPageId,
-                    onClick = { onSelect(page.id) }
+                    canMoveUp = index > 0,
+                    canMoveDown = index < pages.lastIndex,
+                    onClick = { onSelect(page.id) },
+                    onMove = { delta -> onMove(page.id, delta) }
                 )
             }
             item {
@@ -754,15 +857,20 @@ private fun PageRail(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun PageThumb(
     index: Int,
     pageId: String,
     selected: Boolean,
-    onClick: () -> Unit
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onClick: () -> Unit,
+    onMove: (Int) -> Unit
 ) {
     val context = LocalContext.current
     var thumb by remember(pageId) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var pageMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(pageId, selected) {
         val app = context.applicationContext as com.inkproof.app.InkProofApp
@@ -774,25 +882,41 @@ private fun PageThumb(
     }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            border = androidx.compose.foundation.BorderStroke(
-                if (selected) 2.5.dp else 1.dp,
-                if (selected) InkNavy else Divider
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .clickable(onClick = onClick)
-        ) {
-            thumb?.let {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Page ${index + 1}",
-                    contentScale = ContentScale.Crop,
-                    alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize()
-                )
+        Box {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    if (selected) 2.5.dp else 1.dp,
+                    if (selected) InkNavy else Divider
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .combinedClickable(onClick = onClick, onLongClick = { pageMenu = true })
+            ) {
+                thumb?.let {
+                    Image(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = "Page ${index + 1}",
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.TopCenter,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+            DropdownMenu(expanded = pageMenu, onDismissRequest = { pageMenu = false }) {
+                if (canMoveUp) {
+                    DropdownMenuItem(
+                        text = { Text("Move up") },
+                        onClick = { pageMenu = false; onMove(-1) }
+                    )
+                }
+                if (canMoveDown) {
+                    DropdownMenuItem(
+                        text = { Text("Move down") },
+                        onClick = { pageMenu = false; onMove(1) }
+                    )
+                }
             }
         }
         Text(
@@ -812,12 +936,17 @@ private fun SelectionActions(
     onCheck: () -> Unit,
     onSolve: () -> Unit,
     onCopy: () -> Unit,
+    onCut: () -> Unit,
+    onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onRecolor: (Int) -> Unit,
+    onWidth: (Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     val density = LocalContext.current.resources.displayMetrics.density
     var recolorOpen by remember { mutableStateOf(false) }
+    var widthOpen by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
     val yOffset = ((bounds.top / density) - 56f).coerceAtLeast(8f)
     val xOffset = (bounds.left / density).coerceAtLeast(8f)
 
@@ -835,25 +964,120 @@ private fun SelectionActions(
             TextButton(onClick = onSolve) { Text("Solve") }
             TextButton(onClick = onCopy) { Text("Copy") }
             TextButton(onClick = { recolorOpen = true }) { Text("Color") }
+            TextButton(onClick = { widthOpen = true }) { Text("Width") }
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Outlined.Delete, "Delete selection",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
+            Box {
+                IconButton(onClick = { moreOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, "More selection actions")
+                }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Cut") },
+                        onClick = { moreOpen = false; onCut() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Duplicate") },
+                        onClick = { moreOpen = false; onDuplicate() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Deselect") },
+                        onClick = { moreOpen = false; onDismiss() }
+                    )
+                }
+            }
             DropdownMenu(expanded = recolorOpen, onDismissRequest = { recolorOpen = false }) {
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    PenPalette.penColors.forEach { c ->
-                        Box(
-                            modifier = Modifier
-                                .padding(3.dp)
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(c))
-                                .clickable { onRecolor(c); recolorOpen = false }
-                        )
+                Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    PenPalette.penColors.chunked(6).forEach { rowColors ->
+                        Row {
+                            rowColors.forEach { c ->
+                                Box(
+                                    modifier = Modifier
+                                        .padding(3.dp)
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(c))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                        .clickable { onRecolor(c); recolorOpen = false }
+                                )
+                            }
+                        }
                     }
                 }
+            }
+            DropdownMenu(expanded = widthOpen, onDismissRequest = { widthOpen = false }) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    PenPalette.penWidths.forEach { w ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .padding(3.dp)
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { onWidth(w); widthOpen = false }
+                        ) {
+                            Box(
+                                Modifier
+                                    .size((w * 1.8f).coerceIn(4f, 26f).dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurface)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================= page navigation pill =============================
+
+@Composable
+private fun PageNavPill(
+    index: Int,
+    count: Int,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onShowPages: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        shadowElevation = 4.dp,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPrev, enabled = index > 0) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack, "Previous page",
+                    modifier = Modifier.size(18.dp),
+                    tint = if (index > 0) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.outline
+                )
+            }
+            Text(
+                "${index + 1} / $count",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onShowPages)
+                    .padding(horizontal = 6.dp, vertical = 8.dp)
+            )
+            IconButton(onClick = onNext, enabled = index < count - 1) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward, "Next page",
+                    modifier = Modifier.size(18.dp),
+                    tint = if (index < count - 1) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.outline
+                )
             }
         }
     }

@@ -150,6 +150,10 @@ class EditorViewModel(
         }
     }
 
+    fun movePage(pageId: String, delta: Int) {
+        viewModelScope.launch(Dispatchers.IO) { library.movePage(pageId, delta) }
+    }
+
     fun addPage(kind: PageKind = PageKind.NOTE, template: PageTemplate = PageTemplate.RULED) {
         viewModelScope.launch {
             val page = library.createPage(notebookId, kind, template)
@@ -188,6 +192,10 @@ class EditorViewModel(
 
     fun setColor(color: Int) {
         _penStyle.value = _penStyle.value.copy(color = color)
+    }
+
+    fun setEraserRadius(radius: Float) {
+        viewModelScope.launch { app.settingsStore.setEraserRadius(radius) }
     }
 
     fun setWidth(width: Float) {
@@ -283,9 +291,7 @@ class EditorViewModel(
     fun paste() {
         val pageId = _pageContent.value?.page?.id ?: return
         if (clipboard.isEmpty()) return
-        val pasted = clipboard.map { s ->
-            s.translated(48f, 48f).copy(id = newId(), pageId = pageId)
-        }
+        val pasted = com.inkproof.app.model.ClipboardOps.cloneForPaste(clipboard, pageId)
         undoRedo.push(CanvasOp.Add(pasted))
         updateUndoState()
         viewModelScope.launch(Dispatchers.IO) {

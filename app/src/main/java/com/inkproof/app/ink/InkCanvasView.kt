@@ -21,6 +21,7 @@ import com.inkproof.app.model.PenStyle
 import com.inkproof.app.model.Question
 import com.inkproof.app.model.Stroke
 import com.inkproof.app.model.StrokePoint
+import com.inkproof.app.model.ShapeType
 import com.inkproof.app.model.StrokeRole
 import com.inkproof.app.model.TextObject
 import com.inkproof.app.model.ToolType
@@ -103,6 +104,9 @@ class InkCanvasView @JvmOverloads constructor(
     var holdToShapeMs: Long = 400L
     var fingerWritingEnabled: Boolean = false
 
+    /** Shape drawn by the explicit SHAPE tool (picked in the toolbar). */
+    var activeShapeKind: ShapeType = ShapeType.RECTANGLE
+
     private val camera = CanvasCamera()
 
     // ----- committed strokes (page order) -----
@@ -137,6 +141,19 @@ class InkCanvasView @JvmOverloads constructor(
     private var dragDX = 0f
     private var dragDY = 0f
     private var selectionBefore: List<Stroke> = emptyList()
+
+    // ----- selection resize (corner handle) -----
+    private var resizingSelection = false
+    private var resizeOrigBounds = RectF()
+    private val resizeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0xFF4B6BD6.toInt()
+    }
+    private val resizeHandleRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = 0xFFFFFFFF.toInt()
+        strokeWidth = 2.5f
+    }
 
     // ----- navigation -----
     private var navPointerId1 = -1
@@ -357,7 +374,7 @@ class InkCanvasView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (drawing || lassoActive || draggingSelection) {
+                if (drawing || lassoActive || draggingSelection || resizingSelection) {
                     // Palm or extra finger while the pen is working: ignore it.
                     return true
                 }
@@ -374,6 +391,7 @@ class InkCanvasView @JvmOverloads constructor(
                 when {
                     drawing -> extendActiveStroke(event)
                     lassoActive -> extendLasso(event)
+                    resizingSelection -> resizeSelection(event)
                     draggingSelection -> moveSelection(event)
                     navigating -> {
                         scaleDetector.onTouchEvent(event)
@@ -428,18 +446,25 @@ class InkCanvasView @JvmOverloads constructor(
         }
         activeToolOverride = tool
 
-        // Tapping inside an existing selection starts a move.
+        // Grabbing the corner handle starts a resize; tapping inside an
+        // existing selection starts a move.
         val sel = selectionBoundsPage
-        if (selection.isNotEmpty() && sel != null && sel.contains(px, py) &&
-            tool != ToolType.ERASER
-        ) {
-            draggingSelection = true
-            dragStartX = px
-            dragStartY = py
-            dragDX = 0f
-            dragDY = 0f
-            selectionBefore = selection.toList()
-            return
+        if (selection.isNotEmpty() && sel != null && tool != ToolType.ERASER) {
+            if (nearResizeHandle(px, py, sel)) {
+                resizingSelection = true
+                resizeOrigBounds.set(sel)
+                selectionBefore = selection.toList()
+                return
+            }
+            if (sel.contains(px, py)) {
+                draggingSelection = true
+                dragStartX = px
+                dragStartY = py
+                dragDX = 0f
+                dragDY = 0f
+                selectionBefore = selection.toList()
+                return
+            }
         }
         if (selection.isNotEmpty()) {
             clearSelection()
@@ -548,6 +573,15 @@ class InkCanvasView @JvmOverloads constructor(
                 }
             }
 
+            resizingSelection -> {
+                resizingSelection = false
+                if (!cancelled && selectionBefore.isNotEmpty()) {
+                    val after = selection.toList()
+                    listener?.onStrokesMoved(selectionBefore, after)
+                    listener?.onSelectionChanged(after, selectionScreenBounds())
+                }
+            }
+
             draggingSelection -> {
                 draggingSelection = false
                 if (!cancelled && (abs(dragDX) > 0.5f || abs(dragDY) > 0.5f)) {
@@ -585,6 +619,26 @@ class InkCanvasView @JvmOverloads constructor(
 
     private fun commitActiveStroke() {
         if (activePoints.isEmpty() || pageId.isEmpty()) return
+        // Explicit SHAPE tool: the drag start/end define the chosen shape.
+        if (activeToolOverride == ToolType.SHAPE && activePoints.size >= 2) {
+            val first = activePoints.first()
+            val last = activePoints.last()
+            if (hypot(last.x - first.x, last.y - first.y) >= 8f) {
+                val shapeStroke = Stroke(
+                    pageId = pageId,
+                    tool = ToolType.PEN,
+                    color = penStyle.color,
+                    baseWidth = penStyle.baseWidth,
+                    points = ShapeFactory.create(activeShapeKind, first.x, first.y, last.x, last.y),
+                    shapeType = activeShapeKind
+                )
+                val classified = classifyByRegion(shapeStroke)
+                strokes.add(classified)
+                pictureDirty = true
+                listener?.onStrokeCommitted(classified)
+            }
+            return
+        }
         val snap = snappedShape
         val stroke = if (snap != null) {
             Stroke(
@@ -634,7 +688,9 @@ class InkCanvasView @JvmOverloads constructor(
 
     private fun maybeSnapShape() {
         if (!drawing || activeToolOverride == ToolType.ERASER) return
-        if (penStyle.tool != ToolType.PEN && penStyle.tool != ToolType.SHAPE) return
+        // Hold-to-shape applies to freehand PEN ink only; the SHAPE tool
+        // draws the chosen shape explicitly.
+        if (penStyle.tool != ToolType.PEN || activeToolOverride == ToolType.SHAPE) return
         val still = SystemClock.uptimeMillis() - lastSignificantMove >= holdToShapeMs - 30
         if (!still || activePoints.size < 8) return
         val detected = ShapeDetector.detect(activePoints)
@@ -655,9 +711,13 @@ class InkCanvasView @JvmOverloads constructor(
         while (iterator.hasPrevious()) {
             val s = iterator.previous()
             val b = s.bounds()
-            if (px < b.left - r || px > b.right + r || py < b.top - r || py > b.bottom + r) continue
-            val hit = s.points.any { hypot(it.x - px, it.y - py) <= r + s.baseWidth / 2f }
-            if (hit) {
+            val reach = r + s.baseWidth / 2f
+            if (px < b.left - reach || px > b.right + reach ||
+                py < b.top - reach || py > b.bottom + reach
+            ) continue
+            // Segment-accurate: snapped shapes (2-point lines, sparse corner
+            // polygons) are erasable anywhere along their edges.
+            if (StrokeHitTester.hits(s, px, py, r)) {
                 iterator.remove()
                 erasedThisGesture.add(s)
                 removedAny = true
@@ -742,6 +802,41 @@ class InkCanvasView @JvmOverloads constructor(
         invalidate()
     }
 
+    // ----- selection resize -----
+
+    private fun nearResizeHandle(px: Float, py: Float, sel: RectF): Boolean {
+        val grab = 26f / camera.scale
+        return hypot(px - sel.right, py - sel.bottom) <= grab
+    }
+
+    private fun resizeSelection(event: MotionEvent) {
+        val pointerIndex = event.findPointerIndex(activePointerId)
+        if (pointerIndex == -1 && event.pointerCount > 0) return
+        val i = if (pointerIndex == -1) 0 else pointerIndex
+        val px = camera.screenToPageX(event.getX(i))
+        val py = camera.screenToPageY(event.getY(i))
+        val orig = resizeOrigBounds
+        if (orig.width() < 1f || orig.height() < 1f) return
+        val sx = ((px - orig.left) / orig.width()).coerceIn(0.05f, 20f)
+        val sy = ((py - orig.top) / orig.height()).coerceIn(0.05f, 20f)
+
+        // Always scale from the ORIGINAL strokes to avoid cumulative drift.
+        val scaled = selectionBefore.map { it.scaled(sx, sy, orig.left, orig.top) }
+        val byId = scaled.associateBy { it.id }
+        for (j in strokes.indices) {
+            byId[strokes[j].id]?.let { strokes[j] = it }
+        }
+        selection.clear()
+        selection.addAll(scaled)
+        selectionBoundsPage = RectF(
+            orig.left, orig.top,
+            orig.left + orig.width() * sx,
+            orig.top + orig.height() * sy
+        )
+        pictureDirty = true
+        invalidate()
+    }
+
     /** Delete the current selection (invoked from the contextual menu). */
     fun deleteSelection() {
         if (selection.isEmpty()) return
@@ -755,6 +850,15 @@ class InkCanvasView @JvmOverloads constructor(
         if (selection.isEmpty()) return
         val before = selection.toList()
         val after = before.map { it.copy(color = color) }
+        for (i in selection.indices) selection[i] = after[i]
+        applyReplace(after)
+        listener?.onStrokesMoved(before, after)
+    }
+
+    fun setSelectionWidth(width: Float) {
+        if (selection.isEmpty()) return
+        val before = selection.toList()
+        val after = before.map { it.copy(baseWidth = width) }
         for (i in selection.indices) selection[i] = after[i]
         applyReplace(after)
         listener?.onStrokesMoved(before, after)
@@ -848,7 +952,24 @@ class InkCanvasView @JvmOverloads constructor(
         // 4. Active stroke — immediate, nothing between stylus and pixels
         if (drawing && activeToolOverride != ToolType.ERASER && activePoints.isNotEmpty()) {
             val snap = snappedShape
-            if (snap != null) {
+            if (activeToolOverride == ToolType.SHAPE && activePoints.size >= 2) {
+                // Live preview of the explicit shape being dragged out.
+                val first = activePoints.first()
+                val last = activePoints.last()
+                StrokeRenderer.draw(
+                    canvas,
+                    Stroke(
+                        pageId = pageId,
+                        tool = ToolType.PEN,
+                        color = penStyle.color,
+                        baseWidth = penStyle.baseWidth,
+                        points = ShapeFactory.create(
+                            activeShapeKind, first.x, first.y, last.x, last.y
+                        ),
+                        shapeType = activeShapeKind
+                    )
+                )
+            } else if (snap != null) {
                 val preview = Stroke(
                     pageId = pageId,
                     tool = ToolType.PEN,
@@ -883,10 +1004,13 @@ class InkCanvasView @JvmOverloads constructor(
             canvas.drawPath(StrokeRenderer.centerlinePath(lassoPoints), lassoPaint)
         }
 
-        // 6. Selection highlight
+        // 6. Selection highlight + corner resize handle
         selectionBoundsPage?.let { b ->
             canvas.drawRoundRect(b, 12f, 12f, selectionFill)
             canvas.drawRoundRect(b, 12f, 12f, selectionStroke)
+            val handleR = 9f / camera.scale
+            canvas.drawCircle(b.right, b.bottom, handleR, resizeHandlePaint)
+            canvas.drawCircle(b.right, b.bottom, handleR, resizeHandleRing)
         }
 
         canvas.restore()

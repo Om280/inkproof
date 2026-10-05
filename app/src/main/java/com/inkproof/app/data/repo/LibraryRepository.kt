@@ -144,6 +144,25 @@ class LibraryRepository(private val db: InkProofDatabase) {
         return page
     }
 
+    /**
+     * Move a page up (-1) or down (+1) in its notebook.
+     * Order indices are re-normalized so they stay dense and consistent.
+     */
+    suspend fun movePage(pageId: String, delta: Int) {
+        val page = db.pageDao().byId(pageId) ?: return
+        val pages = db.pageDao().pagesFor(page.notebookId).toMutableList()
+        val from = pages.indexOfFirst { it.id == pageId }
+        if (from == -1) return
+        val to = (from + delta).coerceIn(0, pages.lastIndex)
+        if (to == from) return
+        val moved = pages.removeAt(from)
+        pages.add(to, moved)
+        pages.forEachIndexed { index, p ->
+            if (p.orderIndex != index) db.pageDao().setOrder(p.id, index)
+        }
+        db.notebookDao().touch(page.notebookId, System.currentTimeMillis())
+    }
+
     /** Deleting a page removes the page AND all of its content. */
     suspend fun deletePage(pageId: String) {
         db.maintenanceDao().deleteStrokesForPage(pageId)
