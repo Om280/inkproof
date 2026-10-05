@@ -65,6 +65,8 @@ fun CheckPanel(
     onDismiss: () -> Unit,
     onTryAgain: () -> Unit,
     onRetryCheck: (String, CheckAction) -> Unit,
+    onSelectRegion: () -> Unit = {},
+    onEditQuestion: (String) -> Unit = {},
     autoShowFirstHint: Boolean = false
 ) {
     Surface(
@@ -105,6 +107,8 @@ fun CheckPanel(
                 onDismiss = onDismiss,
                 onTryAgain = onTryAgain,
                 onRetryCheck = onRetryCheck,
+                onSelectRegion = onSelectRegion,
+                onEditQuestion = onEditQuestion,
                 autoShowFirstHint = autoShowFirstHint
             )
         }
@@ -119,6 +123,8 @@ private fun ResultContent(
     onDismiss: () -> Unit,
     onTryAgain: () -> Unit,
     onRetryCheck: (String, CheckAction) -> Unit,
+    onSelectRegion: () -> Unit = {},
+    onEditQuestion: (String) -> Unit = {},
     autoShowFirstHint: Boolean = false
 ) {
     // When enabled in settings, the first hint is revealed automatically
@@ -274,6 +280,25 @@ private fun ResultContent(
                         Text("Show solution", color = MutedText)
                     }
                 }
+            }
+        }
+
+        // UNCLEAR recovery: fix what the app couldn't read, don't just retry.
+        if (questionId != null && response.status == CheckStatus.UNCLEAR) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onSelectRegion,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Select region") }
+                Spacer(Modifier.width(10.dp))
+                OutlinedButton(
+                    onClick = { onEditQuestion(questionId) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Edit question") }
             }
         }
 

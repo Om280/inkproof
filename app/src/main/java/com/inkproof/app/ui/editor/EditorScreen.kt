@@ -129,6 +129,7 @@ fun EditorScreen(
     var canvasRef by remember { mutableStateOf<InkCanvasView?>(null) }
     var shapeKind by remember { mutableStateOf(com.inkproof.app.model.ShapeType.RECTANGLE) }
     var showQuestionComposer by remember { mutableStateOf(false) }
+    var editQuestionId by remember { mutableStateOf<String?>(null) }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPageRail by remember { mutableStateOf(true) }
     // TEXT tool tap target: (pageX, pageY, existing object or null).
@@ -371,9 +372,61 @@ fun EditorScreen(
                     onDismiss = viewModel::dismissCheck,
                     onTryAgain = viewModel::dismissCheck,
                     onRetryCheck = { qid, action -> viewModel.checkQuestion(qid, action) },
+                    onSelectRegion = {
+                        // Let the student lasso exactly the work to be read.
+                        viewModel.setTool(ToolType.LASSO)
+                        viewModel.dismissCheck()
+                    },
+                    onEditQuestion = { qid ->
+                        editQuestionId = qid
+                        viewModel.dismissCheck()
+                    },
                     autoShowFirstHint = settings.autoShowHints
                 )
             }
+        }
+    }
+
+    editQuestionId?.let { qid ->
+        val question = pageContent?.questions?.firstOrNull { it.id == qid }
+        if (question == null) {
+            editQuestionId = null
+        } else {
+            var editText by remember(qid) {
+                mutableStateOf(question.typedText.orEmpty())
+            }
+            AlertDialog(
+                onDismissRequest = { editQuestionId = null },
+                title = { Text("Edit question") },
+                text = {
+                    Column {
+                        Text(
+                            "Fix the question statement, then run the check again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MutedText
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = editText,
+                            onValueChange = { editText = it },
+                            minLines = 2,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = editText.isNotBlank(),
+                        onClick = {
+                            viewModel.updateQuestionText(qid, editText.trim())
+                            editQuestionId = null
+                        }
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editQuestionId = null }) { Text("Cancel") }
+                }
+            )
         }
     }
 
