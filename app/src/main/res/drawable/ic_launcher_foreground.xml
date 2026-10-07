@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Handwritten checkmark: the "proof" stroke -->
+    <path
+        android:pathData="M32,57 C36,60 42,65 46,69 C54,58 64,45 73,36"
+        android:strokeColor="#F5F1E8"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <!-- Pen nib finishing the stroke -->
+    <path
+        android:pathData="M73,36 L80,28 L76.5,41.5 Z"
+        android:fillColor="#F5F1E8" />
+    <!-- Ink accent dot -->
+    <path
+        android:pathData="M80,28 m-2,0 a2,2 0 1,1 4,0 a2,2 0 1,1 -4,0"
+        android:fillColor="#7FB7A3" />
+</vector>

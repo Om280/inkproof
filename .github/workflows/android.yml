@@ -1,0 +1,121 @@
+name: Build & Test
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: Backend tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+  android:
+    name: Android unit tests + debug APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee /tmp/tests.log
+
+      - name: Build debug APK
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --console=plain 2>&1 | tee /tmp/build.log
+
+      - name: Publish failure details (step summary + CI issue)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## CI failure details (run ${GITHUB_RUN_ID})"
+            echo '```'
+            for f in /tmp/tests.log /tmp/build.log; do
+              [ -f "$f" ] && grep -E "^e: |error:|FAILED|Caused by|What went wrong|Execution failed|Unresolved|Test .* FAILED" -A 3 "$f" | head -c 40000
+            done
+            echo
+            echo '--- test case failures ---'
+            find app/build/test-results -name '*.xml' 2>/dev/null | while read -r x; do
+              if grep -q '<failure\|<error' "$x"; then
+                echo "FILE: $x"
+                grep -B1 -A 8 '<failure\|<error' "$x" | head -c 4000
+              fi
+            done
+            echo '```'
+          } > /tmp/summary.md
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "CI failure log in:title" --json number --jq '.[0].number' || true)
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file /tmp/summary.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "CI failure log" --body-file /tmp/summary.md
+          fi
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkproof-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Easy download: keep the newest debug APK on a rolling pre-release,
+      # so it can be grabbed without digging into Actions artifacts.
+      - name: Publish debug APK to the debug-latest release
+        if: success() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk inkproof-debug.apk
+          if gh release view debug-latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload debug-latest inkproof-debug.apk --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit debug-latest --repo "$GITHUB_REPOSITORY" \
+              --notes "Auto-published by CI from commit $GITHUB_SHA ($(date -u +'%Y-%m-%d %H:%M UTC'))."
+          else
+            gh release create debug-latest inkproof-debug.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "InkProof debug APK (latest)" \
+              --notes "Auto-published by CI from commit $GITHUB_SHA ($(date -u +'%Y-%m-%d %H:%M UTC'))."
+          fi
+
+      - name: Close CI failure issue on success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "CI failure log in:title" --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "CI is green at $GITHUB_SHA (tests pass, APK built)."
+          done

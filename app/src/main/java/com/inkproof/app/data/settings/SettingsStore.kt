@@ -1,0 +1,161 @@
+package com.inkproof.app.data.settings
+
+import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.inkproof.app.BuildConfig
+import com.inkproof.app.model.PenPalette
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.dataStore by preferencesDataStore(name = "inkproof_settings")
+
+data class Settings(
+    // Appearance: "system" | "light" | "dark"
+    val appTheme: String = "system",
+    // Handwriting stabilization: "off" | "low" | "medium" | "high"
+    val stabilization: String = "medium",
+    // Canvas
+    val continueFromLastPage: Boolean = true,
+    val keepScreenAwake: Boolean = true,
+    val fullScreenCanvas: Boolean = false,
+    val fingerWriting: Boolean = false,
+    // Writing
+    val defaultPenColor: Int = PenPalette.INK_NAVY,
+    val defaultPenWidth: Float = 3.0f,
+    val pressureEnabled: Boolean = true,
+    val holdToShapeMs: Long = 400L,
+    val eraserRadius: Float = 18f,
+    /** Stylus button double-press toggles eraser <-> previous tool. */
+    val stylusDoubleTap: Boolean = true,
+    // Math
+    val recognitionConfidenceThreshold: Float = 0.4f,
+    val autoShowHints: Boolean = false,
+    // AI
+    val mockMode: Boolean = BuildConfig.DEFAULT_MOCK_MODE,
+    /** Empty = use the build-time BuildConfig.BACKEND_BASE_URL. */
+    val backendUrl: String = "",
+    val lastPageByNotebook: String = ""
+)
+
+class SettingsStore(private val context: Context) {
+
+    private object Keys {
+        val APP_THEME = stringPreferencesKey("app_theme")
+        val STABILIZATION = stringPreferencesKey("stabilization")
+        val CONTINUE_LAST = booleanPreferencesKey("continue_from_last_page")
+        val KEEP_AWAKE = booleanPreferencesKey("keep_screen_awake")
+        val FULL_SCREEN = booleanPreferencesKey("full_screen_canvas")
+        val FINGER_WRITING = booleanPreferencesKey("finger_writing")
+        val PEN_COLOR = intPreferencesKey("default_pen_color")
+        val PEN_WIDTH = floatPreferencesKey("default_pen_width")
+        val PRESSURE = booleanPreferencesKey("pressure_enabled")
+        val HOLD_MS = longPreferencesKey("hold_to_shape_ms")
+        val ERASER_RADIUS = floatPreferencesKey("eraser_radius")
+        val STYLUS_DOUBLE_TAP = booleanPreferencesKey("stylus_double_tap")
+        val RECOGNITION_CONFIDENCE = floatPreferencesKey("recognition_confidence")
+        val AUTO_HINTS = booleanPreferencesKey("auto_show_hints")
+        val MOCK_MODE = booleanPreferencesKey("mock_mode")
+        val BACKEND_URL = stringPreferencesKey("backend_url")
+        val LAST_PAGES = stringPreferencesKey("last_page_by_notebook")
+    }
+
+    val settings: Flow<Settings> = context.dataStore.data.map { p ->
+        Settings(
+            appTheme = p[Keys.APP_THEME] ?: "system",
+            stabilization = p[Keys.STABILIZATION] ?: "medium",
+            continueFromLastPage = p[Keys.CONTINUE_LAST] ?: true,
+            keepScreenAwake = p[Keys.KEEP_AWAKE] ?: true,
+            fullScreenCanvas = p[Keys.FULL_SCREEN] ?: false,
+            fingerWriting = p[Keys.FINGER_WRITING] ?: false,
+            defaultPenColor = p[Keys.PEN_COLOR] ?: PenPalette.INK_NAVY,
+            defaultPenWidth = p[Keys.PEN_WIDTH] ?: 3.0f,
+            pressureEnabled = p[Keys.PRESSURE] ?: true,
+            holdToShapeMs = p[Keys.HOLD_MS] ?: 400L,
+            eraserRadius = p[Keys.ERASER_RADIUS] ?: 18f,
+            stylusDoubleTap = p[Keys.STYLUS_DOUBLE_TAP] ?: true,
+            recognitionConfidenceThreshold = p[Keys.RECOGNITION_CONFIDENCE] ?: 0.4f,
+            autoShowHints = p[Keys.AUTO_HINTS] ?: false,
+            mockMode = p[Keys.MOCK_MODE] ?: BuildConfig.DEFAULT_MOCK_MODE,
+            backendUrl = p[Keys.BACKEND_URL] ?: "",
+            lastPageByNotebook = p[Keys.LAST_PAGES] ?: ""
+        )
+    }
+
+    suspend fun setAppTheme(value: String) =
+        context.dataStore.edit { it[Keys.APP_THEME] = value }
+
+    suspend fun setStabilization(value: String) =
+        context.dataStore.edit { it[Keys.STABILIZATION] = value }
+
+    suspend fun setContinueFromLastPage(value: Boolean) =
+        context.dataStore.edit { it[Keys.CONTINUE_LAST] = value }
+
+    suspend fun setKeepScreenAwake(value: Boolean) =
+        context.dataStore.edit { it[Keys.KEEP_AWAKE] = value }
+
+    suspend fun setFullScreenCanvas(value: Boolean) =
+        context.dataStore.edit { it[Keys.FULL_SCREEN] = value }
+
+    suspend fun setFingerWriting(value: Boolean) =
+        context.dataStore.edit { it[Keys.FINGER_WRITING] = value }
+
+    suspend fun setDefaultPenColor(value: Int) =
+        context.dataStore.edit { it[Keys.PEN_COLOR] = value }
+
+    suspend fun setDefaultPenWidth(value: Float) =
+        context.dataStore.edit { it[Keys.PEN_WIDTH] = value }
+
+    suspend fun setPressureEnabled(value: Boolean) =
+        context.dataStore.edit { it[Keys.PRESSURE] = value }
+
+    suspend fun setHoldToShapeMs(value: Long) =
+        context.dataStore.edit { it[Keys.HOLD_MS] = value }
+
+    suspend fun setEraserRadius(value: Float) =
+        context.dataStore.edit { it[Keys.ERASER_RADIUS] = value }
+
+    suspend fun setStylusDoubleTap(value: Boolean) =
+        context.dataStore.edit { it[Keys.STYLUS_DOUBLE_TAP] = value }
+
+    suspend fun setRecognitionConfidence(value: Float) =
+        context.dataStore.edit { it[Keys.RECOGNITION_CONFIDENCE] = value }
+
+    suspend fun setAutoShowHints(value: Boolean) =
+        context.dataStore.edit { it[Keys.AUTO_HINTS] = value }
+
+    suspend fun setMockMode(value: Boolean) =
+        context.dataStore.edit { it[Keys.MOCK_MODE] = value }
+
+    /** Runtime backend URL override; blank returns to the built-in default. */
+    suspend fun setBackendUrl(value: String) =
+        context.dataStore.edit { it[Keys.BACKEND_URL] = value.trim() }
+
+    /** Remember the last open page per notebook ("Continue from last page"). */
+    suspend fun setLastPage(notebookId: String, pageId: String) =
+        context.dataStore.edit { prefs ->
+            val map = decodeLastPages(prefs[Keys.LAST_PAGES] ?: "").toMutableMap()
+            map[notebookId] = pageId
+            // Keep the map bounded.
+            while (map.size > 50) map.remove(map.keys.first())
+            prefs[Keys.LAST_PAGES] = encodeLastPages(map)
+        }
+
+    companion object {
+        fun decodeLastPages(encoded: String): Map<String, String> =
+            encoded.split(';')
+                .filter { it.contains('=') }
+                .associate {
+                    val idx = it.indexOf('=')
+                    it.substring(0, idx) to it.substring(idx + 1)
+                }
+
+        fun encodeLastPages(map: Map<String, String>): String =
+            map.entries.joinToString(";") { "${it.key}=${it.value}" }
+    }
+}

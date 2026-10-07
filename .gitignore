@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+app/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Secrets — never commit real credentials
+.env
+backend/.env
+*.keystore
+*.jks
+
+# Node
+node_modules/
+npm-debug.log
