@@ -12,6 +12,7 @@ import http from 'node:http';
 import { validateCheckRequest, sanitizeCheckResponse, errorResponse } from './lib/schema.js';
 import { mockCheck, mockSolve } from './lib/mock.js';
 import { aiCheck } from './lib/ai.js';
+import { aiRecognize, mockRecognize, validateRecognizeRequest } from './lib/recognize.js';
 
 const env = process.env;
 const PORT = Number(env.PORT || 8787);
@@ -50,13 +51,13 @@ function send(res, code, obj) {
   res.end(body);
 }
 
-async function readJson(req) {
+async function readJson(req, limit = 1_000_000) {
   return new Promise((resolve, reject) => {
     let data = '';
     let size = 0;
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > 1_000_000) {
+      if (size > limit) {
         reject(new Error('payload too large'));
         req.destroy();
         return;
@@ -116,6 +117,30 @@ async function handleCheck(req, res, action) {
   send(res, 200, sanitized);
 }
 
+// Explicit-action cloud fallback for handwriting recognition. The app
+// only calls this when on-device recognition is uncertain.
+async function handleRecognize(req, res) {
+  const ip = req.socket.remoteAddress || 'unknown';
+  if (rateLimited(ip)) {
+    send(res, 429, errorResponse('Too many requests in a short time. Please wait a moment.'));
+    return;
+  }
+  let body;
+  try {
+    body = await readJson(req, 12_000_000);
+  } catch (e) {
+    send(res, 400, errorResponse(`Bad request: ${e.message}.`));
+    return;
+  }
+  const valid = validateRecognizeRequest(body);
+  if (!valid.ok) {
+    send(res, 400, errorResponse(valid.error));
+    return;
+  }
+  const result = MOCK_MODE ? mockRecognize() : await aiRecognize(env, body, valid.mime);
+  send(res, result.status === 'error' ? 502 : 200, result);
+}
+
 export function createServer() {
   return http.createServer(async (req, res) => {
     try {
@@ -141,6 +166,10 @@ export function createServer() {
       }
       if (req.method === 'POST' && req.url === '/api/solve') {
         await handleCheck(req, res, 'solve');
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/api/recognize') {
+        await handleRecognize(req, res);
         return;
       }
       send(res, 404, errorResponse('Not found.'));

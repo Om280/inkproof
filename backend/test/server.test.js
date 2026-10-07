@@ -137,3 +137,24 @@ test('health reports the active provider', async () => {
   assert.equal(data.ok, true);
   assert.ok(['gemini', 'anthropic', 'openai', 'mock'].includes(data.ai_provider));
 });
+
+test('recognize returns structured lines in mock mode', async () => {
+  const r = await post('/api/recognize', { image_base64: 'aGVsbG8=', mime: 'image/png' });
+  assert.equal(r.code, 200);
+  assert.equal(r.body.status, 'ok');
+  assert.ok(Array.isArray(r.body.lines));
+  assert.ok(r.body.lines.length > 0);
+  assert.equal(typeof r.body.lines[0].text, 'string');
+  assert.equal(typeof r.body.confidence, 'number');
+});
+
+test('recognize rejects a missing image', async () => {
+  const r = await post('/api/recognize', { mime: 'image/png' });
+  assert.equal(r.code, 400);
+  assert.equal(r.body.status, 'error');
+});
+
+test('recognize rejects unsupported mime types', async () => {
+  const r = await post('/api/recognize', { image_base64: 'aGVsbG8=', mime: 'image/gif' });
+  assert.equal(r.code, 400);
+});

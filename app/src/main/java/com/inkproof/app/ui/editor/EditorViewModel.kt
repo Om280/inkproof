@@ -314,7 +314,8 @@ class EditorViewModel(
         _recognition.value = RecognitionUi(loading = true)
         viewModelScope.launch {
             val result = runCatching {
-                app.recognizer(settings.value.mockMode).recognize(strokes)
+                app.recognizer(settings.value.mockMode, settings.value.backendUrl)
+                    .recognize(strokes)
             }.getOrNull()
             if (result == null || result.lines.isEmpty()) {
                 _recognition.value = RecognitionUi(

@@ -2,9 +2,11 @@ package com.inkproof.app
 
 import android.app.Application
 import com.inkproof.app.check.BackendCheckProvider
+import com.inkproof.app.check.BackendInkRecognizer
 import com.inkproof.app.check.CheckProvider
 import com.inkproof.app.check.CheckWorkEngine
 import com.inkproof.app.check.HandwritingRecognizer
+import com.inkproof.app.check.HybridRecognizer
 import com.inkproof.app.check.LocalDigitalInkRecognizer
 import com.inkproof.app.check.MockCheckProvider
 import com.inkproof.app.check.MockRecognizer
@@ -43,9 +45,26 @@ class InkProofApp : Application() {
     private val mockRecognizer: HandwritingRecognizer by lazy { MockRecognizer() }
     private val localRecognizer: HandwritingRecognizer by lazy { LocalDigitalInkRecognizer() }
 
-    /** The recognizer matching the current mode — for on-demand recognition. */
-    fun recognizer(mockMode: Boolean): HandwritingRecognizer =
-        if (mockMode) mockRecognizer else localRecognizer
+    /**
+     * The recognizer matching the current mode — for on-demand recognition.
+     * Real mode is a hybrid: on-device ML Kit first; if (and only if) that
+     * is uncertain, one cloud attempt through the configured backend.
+     */
+    fun recognizer(mockMode: Boolean, backendUrl: String = ""): HandwritingRecognizer {
+        if (mockMode) return mockRecognizer
+        val effectiveUrl = backendUrl.ifBlank { BuildConfig.BACKEND_BASE_URL }
+        return HybridRecognizer(localRecognizer, cloudRecognizer(effectiveUrl))
+    }
+
+    @Volatile private var cachedCloudRecognizer: Pair<String, BackendInkRecognizer>? = null
+
+    private fun cloudRecognizer(url: String): BackendInkRecognizer? {
+        if (url.isBlank()) return null
+        cachedCloudRecognizer?.let { (cachedUrl, r) -> if (cachedUrl == url) return r }
+        val r = BackendInkRecognizer(url)
+        cachedCloudRecognizer = url to r
+        return r
+    }
 
     // Backend provider is cached per effective URL so a Settings change
     // takes effect on the very next check — no app restart needed.
@@ -69,7 +88,7 @@ class InkProofApp : Application() {
         return CheckWorkEngine(
             pageRepository = pageRepository,
             checkRepository = checkRepository,
-            recognizer = if (mockMode) mockRecognizer else localRecognizer,
+            recognizer = recognizer(mockMode, backendUrl),
             provider = if (mockMode) mockProvider else backendProvider(effectiveUrl),
             confidenceThreshold = confidenceThreshold
         )
