@@ -43,6 +43,10 @@ class InkProofApp : Application() {
     private val mockRecognizer: HandwritingRecognizer by lazy { MockRecognizer() }
     private val localRecognizer: HandwritingRecognizer by lazy { LocalDigitalInkRecognizer() }
 
+    /** The recognizer matching the current mode — for on-demand recognition. */
+    fun recognizer(mockMode: Boolean): HandwritingRecognizer =
+        if (mockMode) mockRecognizer else localRecognizer
+
     // Backend provider is cached per effective URL so a Settings change
     // takes effect on the very next check — no app restart needed.
     @Volatile private var cachedBackend: Pair<String, CheckProvider>? = null

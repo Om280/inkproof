@@ -215,6 +215,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     effective = settings.backendUrl.ifBlank { BuildConfig.BACKEND_BASE_URL },
                     onSave = { scope.launch { store.setBackendUrl(it) } }
                 )
+                ActionRow("Test AI connection") {
+                    scope.launch {
+                        val url = settings.backendUrl.ifBlank { BuildConfig.BACKEND_BASE_URL }
+                        val message = checkBackendHealth(url)
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
                 ActionRow("Clear cached check results") {
                     scope.launch {
                         app.checkRepository.clearAll()
@@ -246,6 +253,37 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 }
+
+/**
+ * Development-safe backend health probe: reports connectivity and which AI
+ * provider is active. Never transmits or reveals any secret.
+ */
+private suspend fun checkBackendHealth(baseUrl: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (baseUrl.isBlank()) return@withContext "No backend URL configured"
+        try {
+            val conn = java.net.URL("${baseUrl.trimEnd('/')}/api/health")
+                .openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            val provider = Regex("\"ai_provider\"\\s*:\\s*\"([^\"]+)\"")
+                .find(body)?.groupValues?.get(1)
+            val mock = body.contains("\"mock_mode\":true") ||
+                body.contains("\"mock_mode\": true")
+            when {
+                provider != null && provider != "mock" && !mock ->
+                    "AI CONNECTED — provider: $provider"
+                else ->
+                    "Backend reachable — AI NOT CONFIGURED (mock mode). " +
+                        "Set GEMINI_API_KEY on the backend."
+            }
+        } catch (e: Exception) {
+            "BACKEND UNAVAILABLE at $baseUrl — ${e.javaClass.simpleName}. " +
+                "Is the backend running and on the same network?"
+        }
+    }
 
 @Composable
 private fun SectionHeader(title: String) {

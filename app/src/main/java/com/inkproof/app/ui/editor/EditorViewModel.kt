@@ -288,6 +288,81 @@ class EditorViewModel(
         _canRedo.value = undoRedo.canRedo
     }
 
+    // ================= on-demand recognition =================
+
+    /** Result of SELECT → RECOGNIZE MATH. Null = no dialog. */
+    data class RecognitionUi(
+        val loading: Boolean,
+        val text: String = "",
+        val confidence: Float = 0f,
+        val uncertain: Boolean = false
+    )
+
+    private val _recognition = MutableStateFlow<RecognitionUi?>(null)
+    val recognition: StateFlow<RecognitionUi?> = _recognition
+
+    /**
+     * Recognize ONLY the lasso-selected strokes, locally. Never called
+     * automatically — never while writing — and never replaces the ink.
+     */
+    fun recognizeSelection() {
+        val (strokes, _) = _selection.value
+        if (strokes.isEmpty()) {
+            viewModelScope.launch { _toast.emit("Select some handwriting first") }
+            return
+        }
+        _recognition.value = RecognitionUi(loading = true)
+        viewModelScope.launch {
+            val result = runCatching {
+                app.recognizer(settings.value.mockMode).recognize(strokes)
+            }.getOrNull()
+            if (result == null || result.lines.isEmpty()) {
+                _recognition.value = RecognitionUi(
+                    loading = false, text = "", confidence = 0f, uncertain = true
+                )
+                return@launch
+            }
+            val threshold = settings.value.recognitionConfidenceThreshold
+            _recognition.value = RecognitionUi(
+                loading = false,
+                text = result.lines.joinToString("\n") { it.text },
+                confidence = result.confidence,
+                uncertain = result.uncertain || result.confidence < threshold
+            )
+        }
+    }
+
+    fun dismissRecognition() {
+        _recognition.value = null
+    }
+
+    /** ACCEPT: place the recognized text next to the selection as a
+     *  text object. The original handwriting is never touched. */
+    fun acceptRecognition(text: String) {
+        val content = _pageContent.value ?: return
+        val (strokes, _) = _selection.value
+        val bounds = strokes.firstOrNull()?.let {
+            var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE; var maxX = 0f
+            for (s in strokes) {
+                val b = s.bounds()
+                if (b.left < minX) minX = b.left
+                if (b.top < minY) minY = b.top
+                if (b.right > maxX) maxX = b.right
+            }
+            Triple(minX, minY, maxX)
+        }
+        addOrUpdateText(
+            TextObject(
+                pageId = content.page.id,
+                text = text,
+                x = bounds?.third?.plus(24f) ?: 80f,
+                y = bounds?.second ?: 80f,
+                fontSize = 30f
+            )
+        )
+        _recognition.value = null
+    }
+
     // ================= copy / paste =================
 
     fun copySelection() {

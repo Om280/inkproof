@@ -90,10 +90,12 @@ import com.inkproof.app.model.PenPalette
 import com.inkproof.app.model.QuestionContentType
 import com.inkproof.app.model.Stroke
 import com.inkproof.app.model.ToolType
+import androidx.compose.material3.CircularProgressIndicator
 import com.inkproof.app.ui.theme.Divider
 import com.inkproof.app.ui.theme.InkNavy
 import com.inkproof.app.ui.theme.MutedText
 import com.inkproof.app.ui.theme.ProofGreen
+import com.inkproof.app.ui.theme.WarnAmber
 
 class EditorViewModelFactory(
     private val application: Application,
@@ -352,6 +354,7 @@ fun EditorScreen(
                             viewModel.copySelection()
                             viewModel.paste()
                         },
+                        onRecognize = viewModel::recognizeSelection,
                         onDelete = { canvasRef?.deleteSelection() },
                         onRecolor = { color -> canvasRef?.recolorSelection(color) },
                         onWidth = { w -> canvasRef?.setSelectionWidth(w) },
@@ -416,6 +419,82 @@ fun EditorScreen(
                 )
             }
         }
+    }
+
+    // SELECT → RECOGNIZE MATH result. Never replaces handwriting silently.
+    val recognitionUi by viewModel.recognition.collectAsState()
+    recognitionUi?.let { rec ->
+        var editMode by remember(rec) { mutableStateOf(false) }
+        var editedText by remember(rec) { mutableStateOf(rec.text) }
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRecognition,
+            title = { Text("Recognize math") },
+            text = {
+                when {
+                    rec.loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Reading your selection…")
+                    }
+                    rec.uncertain && rec.text.isBlank() -> Text(
+                        "I couldn't confidently read this selection. " +
+                            "Try selecting a cleaner region, or write a little larger."
+                    )
+                    editMode -> OutlinedTextField(
+                        value = editedText,
+                        onValueChange = { editedText = it },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    else -> Column {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                rec.text,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (rec.uncertain)
+                                "Low confidence (${(rec.confidence * 100).toInt()}%) — please verify."
+                            else "Confidence ${(rec.confidence * 100).toInt()}%. " +
+                                "Your handwriting stays untouched.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (rec.uncertain) WarnAmber else MutedText
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                when {
+                    rec.loading -> Unit
+                    rec.uncertain && rec.text.isBlank() -> TextButton(
+                        onClick = viewModel::recognizeSelection
+                    ) { Text("Try again") }
+                    else -> TextButton(
+                        enabled = (if (editMode) editedText else rec.text).isNotBlank(),
+                        onClick = {
+                            viewModel.acceptRecognition(
+                                (if (editMode) editedText else rec.text).trim()
+                            )
+                        }
+                    ) { Text("Accept") }
+                }
+            },
+            dismissButton = {
+                Row {
+                    if (!rec.loading && rec.text.isNotBlank() && !editMode) {
+                        TextButton(onClick = { editMode = true }) { Text("Edit") }
+                    }
+                    TextButton(onClick = viewModel::dismissRecognition) { Text("Cancel") }
+                }
+            }
+        )
     }
 
     editQuestionId?.let { qid ->
@@ -1168,6 +1247,7 @@ private fun SelectionActions(
     onCopy: () -> Unit,
     onCut: () -> Unit,
     onDuplicate: () -> Unit,
+    onRecognize: () -> Unit,
     onDelete: () -> Unit,
     onRecolor: (Int) -> Unit,
     onWidth: (Float) -> Unit,
@@ -1206,6 +1286,10 @@ private fun SelectionActions(
                     Icon(Icons.Filled.MoreVert, "More selection actions")
                 }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Recognize math") },
+                        onClick = { moreOpen = false; onRecognize() }
+                    )
                     DropdownMenuItem(
                         text = { Text("Cut") },
                         onClick = { moreOpen = false; onCut() }
