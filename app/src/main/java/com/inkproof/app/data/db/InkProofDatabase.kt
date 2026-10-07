@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -16,7 +18,7 @@ import androidx.room.RoomDatabase
         ImageObjectEntity::class,
         CheckResultEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class InkProofDatabase : RoomDatabase() {
@@ -40,8 +42,17 @@ abstract class InkProofDatabase : RoomDatabase() {
                     context.applicationContext,
                     InkProofDatabase::class.java,
                     "inkproof.db"
-                ).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
             }
+
+        /** v1 → v2: per-page paper color (default = white paper). */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE pages ADD COLUMN paperColor INTEGER NOT NULL DEFAULT -197640"
+                )
+            }
+        }
 
         /** In-memory database for tests. */
         fun inMemory(context: Context): InkProofDatabase =

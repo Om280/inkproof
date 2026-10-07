@@ -60,7 +60,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 val template = runCatching { PageTemplate.valueOf(firstPage.template) }
                     .getOrDefault(PageTemplate.BLANK)
                 map[nb.id] = ThumbnailRenderer.render(
-                    strokes, template, firstPage.widthPts, firstPage.heightPts, 220
+                    strokes, template, firstPage.widthPts, firstPage.heightPts, 220,
+                    firstPage.paperColor
                 )
             }
             _thumbnails.value = map

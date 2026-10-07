@@ -85,6 +85,7 @@ import com.inkproof.app.ink.ThumbnailRenderer
 import com.inkproof.app.model.CheckAction
 import com.inkproof.app.model.PageKind
 import com.inkproof.app.model.PageTemplate
+import com.inkproof.app.model.PaperColors
 import com.inkproof.app.model.PenPalette
 import com.inkproof.app.model.QuestionContentType
 import com.inkproof.app.model.Stroke
@@ -131,6 +132,7 @@ fun EditorScreen(
     var showQuestionComposer by remember { mutableStateOf(false) }
     var editQuestionId by remember { mutableStateOf<String?>(null) }
     var showTemplatePicker by remember { mutableStateOf(false) }
+    var showPaperColorPicker by remember { mutableStateOf(false) }
     var showPageRail by remember { mutableStateOf(true) }
     // TEXT tool tap target: (pageX, pageY, existing object or null).
     var textDialog by remember {
@@ -195,7 +197,8 @@ fun EditorScreen(
             strokes = content.strokes,
             questions = content.questions,
             pdfBackground = content.pdfBackground,
-            textObjects = content.textObjects
+            textObjects = content.textObjects,
+            paperColor = content.page.paperColor
         )
     }
 
@@ -238,6 +241,7 @@ fun EditorScreen(
             onAddPage = { kind -> viewModel.addPage(kind) },
             onDeletePage = viewModel::deleteCurrentPage,
             onTemplates = { showTemplatePicker = true },
+            onPaperColor = { showPaperColorPicker = true },
             onExportPdf = viewModel::exportPdf,
             onZoomFit = { canvasRef?.zoomToFit() },
             onTogglePages = { showPageRail = !showPageRail },
@@ -441,6 +445,59 @@ fun EditorScreen(
         )
     }
 
+    if (showPaperColorPicker) {
+        val currentPaper = pageContent?.page?.paperColor ?: PaperColors.WHITE
+        AlertDialog(
+            onDismissRequest = { showPaperColorPicker = false },
+            title = { Text("Page color") },
+            text = {
+                Column {
+                    Text(
+                        "Paper color is per page and never changes your ink.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedText
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PaperColors.all.chunked(4).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            row.forEach { (label, color) ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.clickable {
+                                        viewModel.setPaperColor(color)
+                                        showPaperColorPicker = false
+                                    }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(color))
+                                            .border(
+                                                if (color == currentPaper) 3.dp else 1.dp,
+                                                if (color == currentPaper) InkNavy else Divider,
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MutedText
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPaperColorPicker = false }) { Text("Done") }
+            }
+        )
+    }
+
     if (showTemplatePicker) {
         TemplatePickerDialog(
             onDismiss = { showTemplatePicker = false },
@@ -539,6 +596,7 @@ private fun EditorToolbar(
     onAddPage: (PageKind) -> Unit,
     onDeletePage: () -> Unit,
     onTemplates: () -> Unit,
+    onPaperColor: () -> Unit,
     onExportPdf: () -> Unit,
     onZoomFit: () -> Unit,
     onTogglePages: () -> Unit,
@@ -741,6 +799,10 @@ private fun EditorToolbar(
                     DropdownMenuItem(
                         text = { Text("Page template…") },
                         onClick = { overflowOpen = false; onTemplates() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Page color…") },
+                        onClick = { overflowOpen = false; onPaperColor() }
                     )
                     DropdownMenuItem(
                         text = { Text("Paste") },
@@ -1018,7 +1080,9 @@ private fun PageThumb(
         val strokes = app.pageRepository.strokesForPage(pageId)
         val template = runCatching { PageTemplate.valueOf(page.template) }
             .getOrDefault(PageTemplate.BLANK)
-        thumb = ThumbnailRenderer.render(strokes, template, page.widthPts, page.heightPts, 160)
+        thumb = ThumbnailRenderer.render(
+            strokes, template, page.widthPts, page.heightPts, 160, page.paperColor
+        )
     }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {

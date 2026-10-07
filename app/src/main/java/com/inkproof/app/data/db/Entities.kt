@@ -40,6 +40,8 @@ data class PageEntity(
     val kind: String,
     /** PageTemplate name. */
     val template: String,
+    /** Paper background color (ARGB). Independent of template and app theme. */
+    val paperColor: Int = -197640, // PaperColors.WHITE
     val widthPts: Float = 1600f,
     val heightPts: Float = 2200f,
     /** For PDF pages: path of the rendered source page. */

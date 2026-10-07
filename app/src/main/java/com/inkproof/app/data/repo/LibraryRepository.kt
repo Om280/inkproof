@@ -189,6 +189,14 @@ class LibraryRepository(private val db: InkProofDatabase) {
         db.pageDao().setTemplate(pageId, template.name, System.currentTimeMillis())
     }
 
+    /** Paper color is per-page and never touches stroke data. */
+    suspend fun setPaperColor(pageId: String, color: Int) {
+        val page = db.pageDao().byId(pageId) ?: return
+        db.pageDao().upsert(
+            page.copy(paperColor = color, updatedAt = System.currentTimeMillis())
+        )
+    }
+
     suspend fun search(query: String): List<NotebookEntity> {
         if (query.isBlank()) return emptyList()
         val byTitle = db.notebookDao().search(query.trim())

@@ -33,7 +33,9 @@ class PdfExporter(
                 val canvas = pdfPage.canvas
                 val template = runCatching { PageTemplate.valueOf(page.template) }
                     .getOrDefault(PageTemplate.BLANK)
-                TemplateRenderer.draw(canvas, template, page.widthPts, page.heightPts)
+                TemplateRenderer.draw(
+                    canvas, template, page.widthPts, page.heightPts, page.paperColor
+                )
                 page.pdfPath?.let { path ->
                     BitmapFactory.decodeFile(path)?.let { bmp ->
                         canvas.drawBitmap(

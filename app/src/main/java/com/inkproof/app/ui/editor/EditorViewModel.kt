@@ -184,6 +184,14 @@ class EditorViewModel(
         }
     }
 
+    fun setPaperColor(color: Int) {
+        val current = _pageContent.value?.page ?: return
+        viewModelScope.launch {
+            library.setPaperColor(current.id, color)
+            selectPage(current.id)
+        }
+    }
+
     // ================= tools =================
 
     fun setTool(tool: ToolType) {

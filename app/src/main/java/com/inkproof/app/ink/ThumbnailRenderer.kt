@@ -16,14 +16,15 @@ object ThumbnailRenderer {
         template: PageTemplate,
         pageWidth: Float,
         pageHeight: Float,
-        targetWidth: Int = 280
+        targetWidth: Int = 280,
+        paperColor: Int = com.inkproof.app.model.PaperColors.WHITE
     ): Bitmap {
         val scale = targetWidth / pageWidth
         val targetHeight = (pageHeight * scale).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(scale, scale)
-        TemplateRenderer.draw(canvas, template, pageWidth, pageHeight)
+        TemplateRenderer.draw(canvas, template, pageWidth, pageHeight, paperColor)
         for (s in strokes) {
             StrokeRenderer.draw(canvas, s)
         }

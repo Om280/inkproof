@@ -90,6 +90,10 @@ class InkCanvasView @JvmOverloads constructor(
     var template: PageTemplate = PageTemplate.RULED
         set(value) { field = value; invalidate() }
 
+    /** Page paper color — a PAGE property, independent of the app theme. */
+    var paperColor: Int = com.inkproof.app.model.PaperColors.WHITE
+        set(value) { field = value; invalidate() }
+
     private var pdfBackground: Bitmap? = null
     private var questions: List<Question> = emptyList()
     private var textObjects: List<TextObject> = emptyList()
@@ -258,12 +262,14 @@ class InkCanvasView @JvmOverloads constructor(
         strokes: List<Stroke>,
         questions: List<Question>,
         pdfBackground: Bitmap?,
-        textObjects: List<TextObject> = emptyList()
+        textObjects: List<TextObject> = emptyList(),
+        paperColor: Int = com.inkproof.app.model.PaperColors.WHITE
     ) {
         this.pageId = pageId
         this.pageWidth = width
         this.pageHeight = height
         this.template = template
+        this.paperColor = paperColor
         this.questions = questions
         this.pdfBackground = pdfBackground
         this.textObjects = textObjects
@@ -965,8 +971,8 @@ class InkCanvasView @JvmOverloads constructor(
         canvas.save()
         canvas.concat(camera.matrix())
 
-        // 1. Page background + template
-        TemplateRenderer.draw(canvas, template, pageWidth, pageHeight)
+        // 1. Page background + template (paper color is per-page)
+        TemplateRenderer.draw(canvas, template, pageWidth, pageHeight, paperColor)
         pdfBackground?.let {
             canvas.drawBitmap(it, null, RectF(0f, 0f, pageWidth, pageHeight), null)
         }
