@@ -144,4 +144,85 @@ class ShapeDetectorTest {
         }
         assertNull(ShapeDetector.detect(points))
     }
+
+    // ----- math-notation regression: handwriting must NEVER snap -----
+
+    @Test
+    fun `letter-o sized loop stays handwriting`() {
+        // A handwritten "o"/"0" is a near-perfect small circle — the size
+        // gate must keep it as ink no matter how clean it is.
+        val points = (0..40).map { i ->
+            val a = 2 * Math.PI * i / 40
+            StrokePoint(
+                100f + (28 * cos(a)).toFloat(),
+                100f + (28 * sin(a)).toFloat(),
+                0.7f, i.toLong()
+            )
+        }
+        assertNull(ShapeDetector.detect(points))
+    }
+
+    @Test
+    fun `parenthesis curve is not snapped`() {
+        // Open C-curve like "(" — tall enough to pass the size gate but it
+        // is neither a line (bowed) nor a closed shape.
+        val points = (0..40).map { i ->
+            val a = Math.PI * (0.3 + 0.4 * i / 40.0) // 54°..126° arc
+            StrokePoint(
+                200f + (90 * cos(a)).toFloat(),
+                200f + (160 * sin(a)).toFloat(),
+                0.7f, i.toLong()
+            )
+        }
+        assertNull(ShapeDetector.detect(points))
+    }
+
+    @Test
+    fun `square-root-like stroke is not snapped`() {
+        // "√": short down-left tick, then a long diagonal up, then the bar.
+        val points = interpolate(
+            listOf(0f to 60f, 30f to 110f, 90f to 0f, 260f to 0f),
+            perEdge = 14
+        )
+        assertNull(ShapeDetector.detect(points))
+    }
+
+    @Test
+    fun `sine-curve sketch is not snapped`() {
+        // Large plotted sin(x) curve — big, smooth, open; must stay ink.
+        val points = (0..80).map { i ->
+            StrokePoint(i * 5f, (sin(i / 8.0) * 120).toFloat(), 0.7f, i.toLong())
+        }
+        assertNull(ShapeDetector.detect(points))
+    }
+
+    @Test
+    fun `five-corner scribble is not snapped to a polygon`() {
+        // Closed 5-corner zigzag: previously a generic POLYGON fallback
+        // would snap this; now anything beyond triangle/rect stays ink.
+        val points = interpolate(
+            listOf(
+                0f to 0f, 220f to 40f, 140f to 200f,
+                260f to 260f, 20f to 240f, 0f to 4f
+            )
+        )
+        val shape = ShapeDetector.detect(points)
+        if (shape != null) {
+            // If anything matched it must be a *supported* shape with real
+            // geometric confidence — never a generic polygon.
+            assertEquals(true, shape.type != ShapeType.POLYGON)
+        }
+    }
+
+    @Test
+    fun `ambiguous lumpy quad stays handwriting`() {
+        // Four corners nowhere near the bounding-box corners — the old
+        // POLYGON fallback would have snapped it.
+        val points = interpolate(
+            listOf(
+                100f to 0f, 300f to 90f, 180f to 260f, 0f to 120f, 96f to 4f
+            )
+        )
+        assertNull(ShapeDetector.detect(points))
+    }
 }

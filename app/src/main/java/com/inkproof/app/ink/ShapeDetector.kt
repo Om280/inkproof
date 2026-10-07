@@ -19,19 +19,30 @@ import kotlin.math.sin
  */
 object ShapeDetector {
 
-    /** Minimum stroke size (page units) worth snapping. */
-    private const val MIN_SIZE = 24f
+    /**
+     * Minimum stroke size (page units) worth snapping. Deliberately LARGE:
+     * handwritten glyphs (o, x, parentheses, operators) are typically well
+     * under this, so ordinary writing — especially math notation — can
+     * never be mistaken for a shape. False negatives are fine; false
+     * positives are not.
+     */
+    private const val MIN_SIZE = 90f
+
+    /** Overall confidence gate: below this, keep the handwriting. */
+    private const val MIN_CONFIDENCE = 0.72f
 
     fun detect(points: List<StrokePoint>): DetectedShape? {
-        if (points.size < 8) return null
+        if (points.size < 12) return null
         val b = bounds(points)
         if (max(b.width, b.height) < MIN_SIZE) return null
 
-        detectArrow(points)?.let { return it }
-        detectLine(points)?.let { return it }
-        detectCircleOrEllipse(points)?.let { return it }
-        detectPolygon(points)?.let { return it }
-        return null
+        val found = detectArrow(points)
+            ?: detectLine(points)
+            ?: detectCircleOrEllipse(points)
+            ?: detectPolygon(points)
+            ?: return null
+        // Uncertain geometry => DO NOTHING; the ink stays exactly as drawn.
+        return if (found.confidence >= MIN_CONFIDENCE) found else null
     }
 
     // ----- arrow -----
@@ -108,7 +119,7 @@ object ShapeDetector {
         if (chord < MIN_SIZE) return null
 
         val maxDeviation = points.maxOf { distanceToSegment(it, first, last) }
-        if (maxDeviation > chord * 0.07f + 6f) return null
+        if (maxDeviation > chord * 0.055f + 4f) return null
 
         val snapped = snapAngle(first, last)
         return DetectedShape(
@@ -147,7 +158,7 @@ object ShapeDetector {
         val b = bounds(points)
         val size = max(b.width, b.height)
         // Closed-ish curve?
-        if (hypot(last.x - first.x, last.y - first.y) > size * 0.35f) return null
+        if (hypot(last.x - first.x, last.y - first.y) > size * 0.28f) return null
 
         val cx = b.centerX
         val cy = b.centerY
@@ -163,7 +174,7 @@ object ShapeDetector {
             err += abs(hypot(nx, ny) - 1f)
         }
         err /= points.size
-        if (err > 0.24f) return null
+        if (err > 0.19f) return null
 
         // Corner-ness check: rectangles also "hug" an ellipse loosely, but
         // have large flat runs; measure direction-change distribution.
@@ -205,16 +216,14 @@ object ShapeDetector {
             if (!nearDuplicate) vertices.add(seam)
         }
         interior.mapTo(vertices) { points[it] }
-        if (vertices.size < 3 || vertices.size > 8) return null
-
+        // ONLY triangle and rectangle/square are supported polygon snaps.
+        // Anything else (5+ corners, ambiguous quads) stays handwriting —
+        // a generic polygon fallback is exactly how scribbles turn into
+        // "curved garbage", so there is none.
         return when (vertices.size) {
             3 -> DetectedShape(ShapeType.TRIANGLE, closeRing(vertices), 0.85f)
-            4 -> {
-                // Axis-aligned-ish quadrilateral -> rectangle/square
-                val rect = tryRectangle(vertices, b)
-                rect ?: DetectedShape(ShapeType.POLYGON, closeRing(vertices), 0.7f)
-            }
-            else -> DetectedShape(ShapeType.POLYGON, closeRing(vertices), 0.65f)
+            4 -> tryRectangle(vertices, b) // non-rectangular quad => null
+            else -> null
         }
     }
 
