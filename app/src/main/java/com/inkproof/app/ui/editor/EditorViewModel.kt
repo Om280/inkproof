@@ -470,7 +470,8 @@ class EditorViewModel(
         app.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
             android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
                 if (renderer.pageCount == 0) return@use null
-                renderer.openPage(0).use { page ->
+                val page = renderer.openPage(0)
+                try {
                     val scale = (1400f / page.width).coerceIn(1f, 4f)
                     val bmp = Bitmap.createBitmap(
                         (page.width * scale).toInt(),
@@ -483,6 +484,8 @@ class EditorViewModel(
                         android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
                     )
                     bmp
+                } finally {
+                    page.close()
                 }
             }
         }
