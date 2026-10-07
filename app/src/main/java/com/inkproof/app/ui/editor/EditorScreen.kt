@@ -202,6 +202,28 @@ fun EditorScreen(
         )
     }
 
+    // Read-only previews of the adjacent pages for continuous scrolling.
+    LaunchedEffect(pageContent?.loadToken, pages, canvasRef) {
+        val content = pageContent ?: return@LaunchedEffect
+        val view = canvasRef ?: return@LaunchedEffect
+        val app = context.applicationContext as com.inkproof.app.InkProofApp
+        val idx = pages.indexOfFirst { it.id == content.page.id }
+
+        suspend fun neighbor(i: Int): InkCanvasView.NeighborPage? {
+            val p = pages.getOrNull(i) ?: return null
+            return InkCanvasView.NeighborPage(
+                pageId = p.id,
+                width = p.widthPts,
+                height = p.heightPts,
+                template = runCatching { PageTemplate.valueOf(p.template) }
+                    .getOrDefault(PageTemplate.RULED),
+                paperColor = p.paperColor,
+                strokes = app.pageRepository.strokesForPage(p.id)
+            )
+        }
+        if (idx >= 0) view.setNeighbors(neighbor(idx - 1), neighbor(idx + 1))
+    }
+
     // Chrome (outside the page) follows the app theme; the page keeps its template.
     val chromeColor = MaterialTheme.colorScheme.background
     LaunchedEffect(chromeColor, canvasRef) {
@@ -302,6 +324,10 @@ fun EditorScreen(
                                     existing: com.inkproof.app.model.TextObject?
                                 ) {
                                     textDialog = Triple(pageX, pageY, existing)
+                                }
+
+                                override fun onScrollToPage(pageId: String) {
+                                    viewModel.selectPage(pageId)
                                 }
                             }
                             canvasRef = view

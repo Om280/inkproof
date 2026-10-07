@@ -76,7 +76,24 @@ class InkCanvasView @JvmOverloads constructor(
          * (create a new one at the tapped page position).
          */
         fun onTextTap(pageX: Float, pageY: Float, existing: TextObject?) {}
+
+        /**
+         * Continuous scrolling carried the viewport onto a neighbor page:
+         * make [pageId] current. The view has already prepared a camera
+         * handoff so the transition is seamless.
+         */
+        fun onScrollToPage(pageId: String) {}
     }
+
+    /** Read-only preview of an adjacent page for continuous scrolling. */
+    class NeighborPage(
+        val pageId: String,
+        val width: Float,
+        val height: Float,
+        val template: PageTemplate,
+        val paperColor: Int,
+        val strokes: List<Stroke>
+    )
 
     var listener: Listener? = null
 
@@ -93,6 +110,62 @@ class InkCanvasView @JvmOverloads constructor(
     /** Page paper color — a PAGE property, independent of the app theme. */
     var paperColor: Int = com.inkproof.app.model.PaperColors.WHITE
         set(value) { field = value; invalidate() }
+
+    // ----- continuous vertical scrolling across page boundaries -----
+    /** Gap between stacked pages, in page units. */
+    private val pageGap = 64f
+    private var neighborAbove: NeighborPage? = null
+    private var neighborBelow: NeighborPage? = null
+    private var neighborAbovePicture: Picture? = null
+    private var neighborBelowPicture: Picture? = null
+
+    /** Camera state to apply when the next setPage is a scroll handoff. */
+    private var handoffPageId: String? = null
+    private var handoffOffsetY = 0f
+
+    /** Provide read-only previews of the adjacent pages (or null at ends). */
+    fun setNeighbors(above: NeighborPage?, below: NeighborPage?) {
+        neighborAbove = above
+        neighborBelow = below
+        neighborAbovePicture = above?.let { buildNeighborPicture(it) }
+        neighborBelowPicture = below?.let { buildNeighborPicture(it) }
+        invalidate()
+    }
+
+    private fun buildNeighborPicture(n: NeighborPage): Picture {
+        val picture = Picture()
+        val c = picture.beginRecording(
+            n.width.toInt().coerceAtLeast(1), n.height.toInt().coerceAtLeast(1)
+        )
+        TemplateRenderer.draw(c, n.template, n.width, n.height, n.paperColor)
+        for (s in n.strokes) StrokeRenderer.draw(c, s)
+        picture.endRecording()
+        return picture
+    }
+
+    /**
+     * After a finger pan, check whether the viewport center crossed onto a
+     * neighbor page; if so, prepare a seamless camera handoff and ask the
+     * host to switch pages. Never fires while the stylus is working.
+     */
+    private fun maybeScrollToNeighbor() {
+        if (handoffPageId != null) return // switch already in flight
+        if (drawing || lassoActive || draggingSelection || resizingSelection) return
+        val centerPageY = camera.screenToPageY(height / 2f)
+        val below = neighborBelow
+        val above = neighborAbove
+        if (below != null && centerPageY > pageHeight + pageGap) {
+            val shift = (pageHeight + pageGap) * camera.scale
+            handoffPageId = below.pageId
+            handoffOffsetY = camera.offsetY + shift
+            listener?.onScrollToPage(below.pageId)
+        } else if (above != null && centerPageY < -pageGap) {
+            val shift = (above.height + pageGap) * camera.scale
+            handoffPageId = above.pageId
+            handoffOffsetY = camera.offsetY - shift
+            listener?.onScrollToPage(above.pageId)
+        }
+    }
 
     private var pdfBackground: Bitmap? = null
     private var questions: List<Question> = emptyList()
@@ -280,9 +353,20 @@ class InkCanvasView @JvmOverloads constructor(
         snappedShape = null
         drawing = false
         pictureDirty = true
-        if (width > 0 && this.width > 0) {
+        if (handoffPageId == pageId) {
+            // Seamless continuation of a continuous scroll: keep zoom and
+            // horizontal position, shift vertically by exactly one page.
+            camera.set(camera.scale, camera.offsetX, handoffOffsetY)
+            handoffPageId = null
+        } else if (width > 0 && this.width > 0) {
+            handoffPageId = null
             camera.fitPage(width, height, this.width.toFloat(), this.height.toFloat())
         }
+        // Stale until the host provides the new page's neighbors.
+        neighborAbove = null
+        neighborBelow = null
+        neighborAbovePicture = null
+        neighborBelowPicture = null
         invalidate()
     }
 
@@ -954,6 +1038,7 @@ class InkCanvasView @JvmOverloads constructor(
             lastNavX = x
             lastNavY = y
         }
+        maybeScrollToNeighbor()
         invalidate()
     }
 
@@ -970,6 +1055,21 @@ class InkCanvasView @JvmOverloads constructor(
 
         canvas.save()
         canvas.concat(camera.matrix())
+
+        // 0. Neighbor pages (read-only) for continuous vertical scrolling.
+        neighborAbovePicture?.let { pic ->
+            val above = neighborAbove ?: return@let
+            canvas.save()
+            canvas.translate(0f, -(above.height + pageGap))
+            canvas.drawPicture(pic)
+            canvas.restore()
+        }
+        neighborBelowPicture?.let { pic ->
+            canvas.save()
+            canvas.translate(0f, pageHeight + pageGap)
+            canvas.drawPicture(pic)
+            canvas.restore()
+        }
 
         // 1. Page background + template (paper color is per-page)
         TemplateRenderer.draw(canvas, template, pageWidth, pageHeight, paperColor)
