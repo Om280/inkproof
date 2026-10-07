@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -707,10 +709,11 @@ private fun EditorToolbar(
     onTogglePages: () -> Unit,
     onPaste: () -> Unit
 ) {
-    var penOptionsFor by remember { mutableStateOf<ToolType?>(null) }
+    var customColorOpen by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
 
     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
+        Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -730,99 +733,34 @@ private fun EditorToolbar(
             )
             Spacer(Modifier.width(12.dp))
 
-            // Tools
+            // Tools — selecting a tool shows its options in the horizontal
+            // contextual strip below (Notewise-style). No vertical menus
+            // ever cover the notebook.
             ToolButton(
                 selected = penStyle.tool == ToolType.PEN,
                 icon = { Icon(Icons.Outlined.Edit, "Pen") },
-                onClick = {
-                    if (penStyle.tool == ToolType.PEN) penOptionsFor = ToolType.PEN
-                    else onTool(ToolType.PEN)
-                }
+                onClick = { onTool(ToolType.PEN) }
             )
             ToolButton(
                 selected = penStyle.tool == ToolType.HIGHLIGHTER,
                 icon = { Icon(Icons.Outlined.BorderColor, "Highlighter") },
-                onClick = {
-                    if (penStyle.tool == ToolType.HIGHLIGHTER) penOptionsFor = ToolType.HIGHLIGHTER
-                    else onTool(ToolType.HIGHLIGHTER)
-                }
+                onClick = { onTool(ToolType.HIGHLIGHTER) }
             )
-            Box {
-                var eraserMenu by remember { mutableStateOf(false) }
-                ToolButton(
-                    selected = penStyle.tool == ToolType.ERASER,
-                    icon = { Icon(Icons.Outlined.Backspace, "Eraser") },
-                    onClick = {
-                        if (penStyle.tool == ToolType.ERASER) eraserMenu = true
-                        else onTool(ToolType.ERASER)
-                    }
-                )
-                DropdownMenu(expanded = eraserMenu, onDismissRequest = { eraserMenu = false }) {
-                    listOf("Small" to 10f, "Medium" to 18f, "Large" to 34f).forEach { (label, r) ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    label,
-                                    fontWeight = if (eraserRadius == r) FontWeight.Bold else null
-                                )
-                            },
-                            leadingIcon = {
-                                Box(
-                                    Modifier
-                                        .size((r / 1.6f).dp)
-                                        .clip(CircleShape)
-                                        .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                )
-                            },
-                            onClick = { onEraserRadius(r); eraserMenu = false }
-                        )
-                    }
-                }
-            }
+            ToolButton(
+                selected = penStyle.tool == ToolType.ERASER,
+                icon = { Icon(Icons.Outlined.Backspace, "Eraser") },
+                onClick = { onTool(ToolType.ERASER) }
+            )
             ToolButton(
                 selected = penStyle.tool == ToolType.LASSO,
                 icon = { Icon(Icons.Outlined.HighlightAlt, "Lasso") },
                 onClick = { onTool(ToolType.LASSO) }
             )
-            Box {
-                var shapesMenu by remember { mutableStateOf(false) }
-                ToolButton(
-                    selected = penStyle.tool == ToolType.SHAPE,
-                    icon = { Icon(Icons.Outlined.Category, "Shapes") },
-                    onClick = {
-                        if (penStyle.tool == ToolType.SHAPE) shapesMenu = true
-                        else {
-                            onTool(ToolType.SHAPE)
-                            shapesMenu = true
-                        }
-                    }
-                )
-                DropdownMenu(expanded = shapesMenu, onDismissRequest = { shapesMenu = false }) {
-                    listOf(
-                        com.inkproof.app.model.ShapeType.LINE to "Line",
-                        com.inkproof.app.model.ShapeType.ARROW to "Arrow",
-                        com.inkproof.app.model.ShapeType.RECTANGLE to "Rectangle",
-                        com.inkproof.app.model.ShapeType.SQUARE to "Square",
-                        com.inkproof.app.model.ShapeType.CIRCLE to "Circle",
-                        com.inkproof.app.model.ShapeType.ELLIPSE to "Ellipse",
-                        com.inkproof.app.model.ShapeType.TRIANGLE to "Triangle"
-                    ).forEach { (kind, label) ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    label,
-                                    fontWeight = if (shapeKind == kind) FontWeight.Bold else null
-                                )
-                            },
-                            onClick = {
-                                onShapeKind(kind)
-                                onTool(ToolType.SHAPE)
-                                shapesMenu = false
-                            }
-                        )
-                    }
-                }
-            }
+            ToolButton(
+                selected = penStyle.tool == ToolType.SHAPE,
+                icon = { Icon(Icons.Outlined.Category, "Shapes") },
+                onClick = { onTool(ToolType.SHAPE) }
+            )
             ToolButton(
                 selected = penStyle.tool == ToolType.TEXT,
                 icon = { Icon(Icons.Outlined.TextFields, "Text") },
@@ -842,7 +780,7 @@ private fun EditorToolbar(
                     .clip(CircleShape)
                     .background(Color(penStyle.color))
                     .border(1.5.dp, Divider, CircleShape)
-                    .clickable { penOptionsFor = penStyle.tool }
+                    .clickable { customColorOpen = true }
             )
 
             Spacer(Modifier.weight(1f))
@@ -928,17 +866,211 @@ private fun EditorToolbar(
                 }
             }
         }
-    }
 
-    penOptionsFor?.let { tool ->
-        PenOptionsDialog(
-            tool = tool,
-            currentColor = penStyle.color,
-            currentWidth = penStyle.baseWidth,
+        // Horizontal contextual options for the active tool — compact,
+        // scrollable sideways when width-constrained, never a tall menu.
+        ToolOptionsStrip(
+            penStyle = penStyle,
+            shapeKind = shapeKind,
+            onShapeKind = onShapeKind,
+            eraserRadius = eraserRadius,
+            onEraserRadius = onEraserRadius,
             onColor = onColor,
             onWidth = onWidth,
-            onDismiss = { penOptionsFor = null }
+            onCustomColor = { customColorOpen = true }
         )
+        }
+    }
+
+    if (customColorOpen) {
+        CustomColorDialog(
+            initialColor = penStyle.color,
+            onPick = { picked -> onColor(picked); customColorOpen = false },
+            onDismiss = { customColorOpen = false }
+        )
+    }
+}
+
+/**
+ * Notewise-style contextual strip: one compact horizontal row of options
+ * for the active tool, directly under the main toolbar. Scrolls
+ * horizontally when the screen is narrow; never a vertical dropdown.
+ */
+@Composable
+private fun ToolOptionsStrip(
+    penStyle: com.inkproof.app.model.PenStyle,
+    shapeKind: com.inkproof.app.model.ShapeType,
+    onShapeKind: (com.inkproof.app.model.ShapeType) -> Unit,
+    eraserRadius: Float,
+    onEraserRadius: (Float) -> Unit,
+    onColor: (Int) -> Unit,
+    onWidth: (Float) -> Unit,
+    onCustomColor: () -> Unit
+) {
+    val tool = penStyle.tool
+    val hasOptions = tool == ToolType.PEN || tool == ToolType.HIGHLIGHTER ||
+        tool == ToolType.ERASER || tool == ToolType.SHAPE
+    if (!hasOptions) return
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp)
+    ) {
+        when (tool) {
+            ToolType.PEN, ToolType.HIGHLIGHTER -> {
+                val colors = if (tool == ToolType.HIGHLIGHTER) {
+                    PenPalette.highlighterColors
+                } else {
+                    PenPalette.penColors
+                }
+                val widths = if (tool == ToolType.HIGHLIGHTER) {
+                    PenPalette.highlighterWidths
+                } else {
+                    PenPalette.penWidths
+                }
+                colors.forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(c))
+                            .border(
+                                if (c == penStyle.color) 2.5.dp else 1.dp,
+                                if (c == penStyle.color) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    Divider
+                                },
+                                CircleShape
+                            )
+                            .clickable { onColor(c) }
+                    )
+                }
+                if (tool == ToolType.PEN) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Divider, CircleShape)
+                            .clickable(onClick = onCustomColor)
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "Custom color",
+                            tint = MutedText,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                Box(
+                    Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(1.dp, 24.dp)
+                        .background(Divider)
+                )
+                widths.forEach { w ->
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (w == penStyle.baseWidth) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    Color.Transparent
+                                }
+                            )
+                            .clickable { onWidth(w) }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size((w * 1.4f).coerceIn(4f, 22f).dp)
+                                .clip(CircleShape)
+                                .background(Color(penStyle.color))
+                        )
+                    }
+                }
+            }
+
+            ToolType.ERASER -> {
+                listOf("Small" to 10f, "Medium" to 18f, "Large" to 34f)
+                    .forEach { (label, r) ->
+                        val selected = eraserRadius == r
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            modifier = Modifier.clickable { onEraserRadius(r) }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size((r / 1.8f).coerceIn(6f, 20f).dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            1.5.dp,
+                                            MaterialTheme.colorScheme.outline,
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.Bold else null
+                                )
+                            }
+                        }
+                    }
+            }
+
+            ToolType.SHAPE -> {
+                listOf(
+                    com.inkproof.app.model.ShapeType.LINE to "Line",
+                    com.inkproof.app.model.ShapeType.ARROW to "Arrow",
+                    com.inkproof.app.model.ShapeType.RECTANGLE to "Rectangle",
+                    com.inkproof.app.model.ShapeType.SQUARE to "Square",
+                    com.inkproof.app.model.ShapeType.CIRCLE to "Circle",
+                    com.inkproof.app.model.ShapeType.ELLIPSE to "Ellipse",
+                    com.inkproof.app.model.ShapeType.TRIANGLE to "Triangle"
+                ).forEach { (kind, label) ->
+                    val selected = shapeKind == kind
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        modifier = Modifier.clickable { onShapeKind(kind) }
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (selected) FontWeight.Bold else null,
+                            modifier = Modifier
+                                .padding(horizontal = 14.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+            }
+
+            else -> Unit
+        }
     }
 }
 
@@ -961,111 +1093,6 @@ private fun ToolButton(
             icon()
         }
     }
-}
-
-@Composable
-private fun PenOptionsDialog(
-    tool: ToolType,
-    currentColor: Int,
-    currentWidth: Float,
-    onColor: (Int) -> Unit,
-    onWidth: (Float) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val colors = if (tool == ToolType.HIGHLIGHTER) PenPalette.highlighterColors
-    else PenPalette.penColors
-    val widths = if (tool == ToolType.HIGHLIGHTER) PenPalette.highlighterWidths
-    else PenPalette.penWidths
-    var customOpen by remember { mutableStateOf(false) }
-
-    if (customOpen) {
-        CustomColorDialog(
-            initialColor = currentColor,
-            onPick = { picked -> onColor(picked); customOpen = false },
-            onDismiss = { customOpen = false }
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (tool == ToolType.HIGHLIGHTER) "Highlighter" else "Pen") },
-        text = {
-            Column {
-                Text("Color", style = MaterialTheme.typography.labelMedium, color = MutedText)
-                Spacer(Modifier.height(8.dp))
-                val rows = colors.chunked(7)
-                rows.forEachIndexed { rowIndex, rowColors ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        rowColors.forEach { c ->
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(c))
-                                    .border(
-                                        if (c == currentColor) 3.dp else 1.dp,
-                                        if (c == currentColor) InkNavy else Divider,
-                                        CircleShape
-                                    )
-                                    .clickable { onColor(c) }
-                            )
-                        }
-                        if (rowIndex == rows.lastIndex && tool != ToolType.HIGHLIGHTER) {
-                            // Custom color entry point at the end of the last row.
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .border(1.dp, Divider, CircleShape)
-                                    .clickable { customOpen = true }
-                            ) {
-                                Icon(
-                                    Icons.Filled.Add,
-                                    contentDescription = "Custom color",
-                                    tint = MutedText,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Spacer(Modifier.height(18.dp))
-                Text("Width", style = MaterialTheme.typography.labelMedium, color = MutedText)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    widths.forEach { w ->
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (w == currentWidth)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent
-                                )
-                                .clickable { onWidth(w) }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size((w * 1.6f).coerceIn(4f, 30f).dp)
-                                    .clip(CircleShape)
-                                    .background(Color(currentColor))
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
-        }
-    )
 }
 
 /** Simple HSV color picker: hue / saturation / brightness sliders with live preview. */

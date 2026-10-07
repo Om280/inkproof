@@ -37,13 +37,16 @@ object PenPalette {
 
     val INK_WHITE = 0xFFFFFFFF.toInt()
     val INK_GREY = 0xFF8E939E.toInt()
+    val INK_LIGHT_GREY = 0xFFC5CAD3.toInt()
     val INK_DARK_GREY = 0xFF4A4F58.toInt()
     val INK_YELLOW = 0xFFE0A800.toInt()
     val INK_PINK = 0xFFD81B74.toInt()
+    val INK_CYAN = 0xFF00A6C0.toInt()
 
     val penColors = listOf(
-        INK_BLACK, INK_DARK_GREY, INK_GREY, INK_WHITE, INK_RED, INK_ORANGE,
-        INK_YELLOW, INK_GREEN, INK_TEAL, INK_BLUE, INK_NAVY, INK_PURPLE, INK_PINK
+        INK_BLACK, INK_DARK_GREY, INK_GREY, INK_LIGHT_GREY, INK_WHITE,
+        INK_RED, INK_ORANGE, INK_YELLOW, INK_GREEN, INK_TEAL, INK_CYAN,
+        INK_BLUE, INK_NAVY, INK_PURPLE, INK_PINK
     )
     val highlighterColors = listOf(HL_YELLOW, HL_GREEN, HL_BLUE, HL_PINK, HL_ORANGE)
     val penWidths = listOf(1.5f, 2.5f, 3.5f, 5f, 8f)
