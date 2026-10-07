@@ -104,6 +104,12 @@ class InkCanvasView @JvmOverloads constructor(
     var holdToShapeMs: Long = 400L
     var fingerWritingEnabled: Boolean = false
 
+    /** Jitter smoothing for the active stroke; zero added latency. */
+    private val stabilizer = StrokeStabilizer(StrokeStabilizer.Level.MEDIUM)
+    var stabilization: StrokeStabilizer.Level
+        get() = stabilizer.level
+        set(value) { stabilizer.level = value }
+
     /** Shape drawn by the explicit SHAPE tool (picked in the toolbar). */
     var activeShapeKind: ShapeType = ShapeType.RECTANGLE
 
@@ -507,6 +513,8 @@ class InkCanvasView @JvmOverloads constructor(
                 activeStartUptime = event.eventTime
                 lastSignificantMove = SystemClock.uptimeMillis()
                 snappedShape = null
+                stabilizer.reset()
+                stabilizer.filter(px, py)
                 activePoints.add(
                     StrokePoint(px, py, event.getPressure(index).coerceIn(0.05f, 1.5f), 0)
                 )
@@ -567,7 +575,11 @@ class InkCanvasView @JvmOverloads constructor(
     /** Returns true when the sample represents significant movement. */
     private fun appendPoint(px: Float, py: Float, pressure: Float, t: Long): Boolean {
         val last = activePoints.lastOrNull()
-        activePoints.add(StrokePoint(px, py, pressure.coerceIn(0.05f, 1.5f), t))
+        // Shapes and the lasso want raw geometry; ink gets stabilized.
+        val p = if (activeToolOverride == ToolType.PEN ||
+            activeToolOverride == ToolType.HIGHLIGHTER
+        ) stabilizer.filter(px, py) else floatArrayOf(px, py)
+        activePoints.add(StrokePoint(p[0], p[1], pressure.coerceIn(0.05f, 1.5f), t))
         if (last == null) return true
         return hypot(px - last.x, py - last.y) > 2.5f / camera.scale
     }
@@ -659,12 +671,22 @@ class InkCanvasView @JvmOverloads constructor(
                 shapeType = snap.type
             )
         } else {
+            // Endpoint fidelity: the stroke must end exactly where the pen
+            // lifted, even when stabilization trailed slightly behind.
+            val pts = activePoints.toMutableList()
+            if (stabilizer.level != StrokeStabilizer.Level.OFF && pts.size >= 2 &&
+                (penStyle.tool == ToolType.PEN || penStyle.tool == ToolType.HIGHLIGHTER)
+            ) {
+                val tail = pts.last()
+                pts[pts.size - 1] =
+                    tail.copy(x = stabilizer.lastRawX, y = stabilizer.lastRawY)
+            }
             Stroke(
                 pageId = pageId,
                 tool = penStyle.tool,
                 color = penStyle.color,
                 baseWidth = penStyle.baseWidth,
-                points = activePoints.toList()
+                points = pts
             )
         }
         val classified = classifyByRegion(stroke)

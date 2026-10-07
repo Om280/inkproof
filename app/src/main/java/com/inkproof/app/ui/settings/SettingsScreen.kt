@@ -163,6 +163,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                     settings.pressureEnabled) {
                     scope.launch { store.setPressureEnabled(it) }
                 }
+                ChoiceRow(
+                    title = "Stabilization",
+                    subtitle = "Smooths jitter; never delays ink",
+                    options = listOf(
+                        "off" to "Off", "low" to "Low",
+                        "medium" to "Med", "high" to "High"
+                    ),
+                    selected = settings.stabilization
+                ) { scope.launch { store.setStabilization(it) } }
                 SliderRow(
                     "Hold-to-shape delay",
                     value = settings.holdToShapeMs.toFloat(),

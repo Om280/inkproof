@@ -206,12 +206,14 @@ fun EditorScreen(
     }
 
     // Keep tool config in sync.
-    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, shapeKind, canvasRef) {
+    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, settings.stabilization, shapeKind, canvasRef) {
         canvasRef?.let {
             it.penStyle = penStyle
             it.holdToShapeMs = settings.holdToShapeMs
             it.fingerWritingEnabled = settings.fingerWriting
             it.eraserRadiusPage = settings.eraserRadius
+            it.stabilization =
+                com.inkproof.app.ink.StrokeStabilizer.Level.fromName(settings.stabilization)
             it.activeShapeKind = shapeKind
         }
     }
@@ -222,7 +224,6 @@ fun EditorScreen(
             penStyle = penStyle,
             canUndo = canUndo,
             canRedo = canRedo,
-            isQuestionPage = pageContent?.page?.kind == PageKind.MATH_QUESTION.name,
             shapeKind = shapeKind,
             onShapeKind = { shapeKind = it },
             eraserRadius = settings.eraserRadius,
@@ -524,7 +525,6 @@ private fun EditorToolbar(
     penStyle: com.inkproof.app.model.PenStyle,
     canUndo: Boolean,
     canRedo: Boolean,
-    isQuestionPage: Boolean,
     shapeKind: com.inkproof.app.model.ShapeType,
     onShapeKind: (com.inkproof.app.model.ShapeType) -> Unit,
     eraserRadius: Float,
@@ -693,7 +693,9 @@ private fun EditorToolbar(
                     tint = if (canRedo) MaterialTheme.colorScheme.onSurface else Divider)
             }
 
-            if (isQuestionPage) {
+            // + QUESTION is always available: questions are first-class
+            // objects on any normal page, never a special page type.
+            run {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer,
