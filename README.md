@@ -53,6 +53,16 @@ Primary hardware target: **OnePlus Pad + OnePlus Stylo 2**.
   export the annotated notebook back to PDF.
 - **Local-first** — notebooks, pages, handwriting, lasso, shapes and storage
   all work offline. Only CHECK/SOLVE needs the network.
+- **Pen stabilization** — Off / Low / Medium / High adaptive jitter smoothing
+  that preserves corners and adds zero latency (position-only filtering).
+- **Continuous scrolling** — finger-scroll naturally from page to page;
+  neighbor pages render in place and the switch is a seamless camera handoff.
+  Pages stay fully independent objects underneath.
+- **Paper colors** — per-page paper from white to black (warm white, grey,
+  slate, dark grey, near black); independent of both template and app theme;
+  template lines adapt to dark paper; ink is never auto-inverted.
+- **Recognize math** — lasso a region → Recognize math → Accept / Edit;
+  local on-device recognition, never automatic, never replaces handwriting.
 - **Dark mode** — System / Light / Dark in Settings → Appearance; one theme
   system drives every screen, dialog and panel. Pages keep their own paper
   color — a dark app never forces dark pages.
@@ -210,6 +220,93 @@ behind the same provider interface.
 No keys configured ⇒ the backend runs in mock mode automatically. Secrets are
 read only from the environment; the Android client never contains them.
 
+## Getting CHECK MY WORK Working
+
+The real CHECK/SOLVE flow needs a Gemini API key on the **backend** (never in
+the Android app). Follow these steps end-to-end:
+
+1. **Open Google AI Studio** → https://aistudio.google.com/apikey
+   (sign in with any Google account).
+2. **Create an API key** ("Get API key" → "Create API key"). Free-tier keys
+   work; Gemini Flash models have a free quota (subject to Google's current
+   limits — not unlimited).
+3. **Configure the backend**: copy the template and edit it.
+   ```bash
+   cd backend
+   cp ../.env.example .env
+   ```
+4. **Set `GEMINI_API_KEY`** in `backend/.env`:
+   ```
+   GEMINI_API_KEY=AIza...your-key...
+   ```
+5. **(Optional) set `GEMINI_MODEL`**. The default `gemini-flash-latest` is a
+   rolling alias that always points at the current stable Flash model, so you
+   normally don't need this. To pin a version, check the current model list at
+   https://ai.google.dev/gemini-api/docs/models and set e.g.
+   `GEMINI_MODEL=<model-name-from-docs>`. If a pinned name ever 404s, the
+   backend auto-discovers a current Flash model and retries.
+6. **Start the backend**:
+   ```bash
+   node --env-file=.env server.js        # needs Node 18+ (22+ recommended)
+   ```
+   You should see `InkProof backend listening on :8787 (mock_mode=false)`.
+   `mock_mode=false` confirms the key was picked up.
+7. **Start the Android app** on the tablet (install the debug APK below).
+8. **Check AI status**: Settings → AI → **Test AI connection**. You should see
+   `AI CONNECTED — provider: gemini`. If you see `BACKEND UNAVAILABLE`, set
+   Settings → AI → Backend URL to `http://<your-computer-ip>:8787` (both
+   devices on the same Wi-Fi; debug builds allow plain HTTP).
+9. **Run a test request** from the computer:
+   ```bash
+   curl http://localhost:8787/api/health
+   curl -X POST http://localhost:8787/api/check -H "content-type: application/json" \
+     -d '{"request_id":"t1","action":"check","question_id":"q1","question_text":"Solve 2x + 6 = 14","question_source":"typed","question_confidence":1,"solution_lines":[{"line_index":0,"text":"2x = 8","confidence":0.95},{"line_index":1,"text":"x = 4","confidence":0.95}],"content_version":1,"solution_version":1}'
+   ```
+   A JSON result with `"status":"correct"` means Gemini is answering.
+10. **Test CHECK MY WORK**: turn OFF Settings → AI → Mock mode, open a
+    question, write a solution, tap **Check my work**.
+11. **Test SOLVE**: same question → **Solve** (uses only the question text).
+12. **Common API errors**
+    | Symptom | Cause / fix |
+    |---|---|
+    | `gemini 400` | Malformed key — re-copy it without spaces |
+    | `gemini 403` | Key disabled/restricted — create a fresh key in AI Studio |
+    | `gemini 404` | Model name gone — backend auto-falls back; or fix `GEMINI_MODEL` |
+    | `gemini 429` | Free-tier quota hit — wait a minute, or lower usage |
+    | `BACKEND UNAVAILABLE` | Backend not running / wrong IP / firewall blocks :8787 |
+    | Result is always mock | Mock mode still ON in app settings, or `MOCK_MODE=true` in `.env` |
+
+**Where secrets live**: only in `backend/.env` (gitignored) or your host's
+environment variables. The Android client and this repo contain **no keys**.
+**Restart/redeploy**: edit `.env`, Ctrl-C the Node process, start it again —
+provider/model changes take effect immediately (the app also re-reads the
+backend URL per request, no reinstall needed).
+
+### Windows setup
+
+Everything works on Windows with Node 18+ and Android Studio:
+
+```powershell
+# Backend (PowerShell)
+cd backend
+Copy-Item ..\.env.example .env
+notepad .env                       # paste GEMINI_API_KEY
+node --env-file=.env server.js     # http://localhost:8787
+
+# Test (PowerShell)
+Invoke-RestMethod http://localhost:8787/api/health
+
+# Android: open the repo in Android Studio and Run, or build an APK:
+.\gradlew.bat :app:assembleDebug   # output: app\build\outputs\apk\debug\app-debug.apk
+.\gradlew.bat :app:testDebugUnitTest
+```
+
+Alternative to a local `.env`: set a user environment variable
+(`setx GEMINI_API_KEY "AIza..."`, then restart the terminal) and run
+`node server.js`. Find your PC's IP for the tablet with `ipconfig`
+(IPv4 address), and allow Node through Windows Defender Firewall when
+prompted. Never commit a real key.
+
 ### Tests
 
 ```bash
@@ -230,7 +327,10 @@ with reasons), text import (HTML stripping, CSV layout, line wrapping),
 folders, text-object persistence, notebook/page persistence, page reordering,
 page independence, question isolation (page A vs page B, Q1/Q2/Q3), cache
 invalidation on solution edits, empty-input error states, backend schema
-validation, provider priority (Gemini first), rate limiting and dedup cache.
+validation, provider priority (Gemini first), rate limiting and dedup cache,
+stroke stabilization (jitter reduction, corner preservation, endpoint
+fidelity, OFF pass-through), paper-color persistence + page independence +
+dark-paper detection + adaptive template lines + ink never recolored.
 
 CI (GitHub Actions) runs both suites and uploads a debug APK artifact on every
 push.
