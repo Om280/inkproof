@@ -184,6 +184,18 @@ fun SettingsScreen(onBack: () -> Unit) {
                     range = 6f..60f,
                     format = { "${it.toInt()}" }
                 ) { scope.launch { store.setEraserRadius(it) } }
+                ChoiceRow(
+                    title = "Stylus double-tap",
+                    subtitle = "Double-press the stylus button to swap " +
+                        "eraser and previous tool. Uses real stylus button " +
+                        "events; OEM air-gestures (OnePlus Stylo) are not " +
+                        "exposed to apps.",
+                    options = listOf(
+                        "eraser" to "Toggle eraser",
+                        "off" to "Off"
+                    ),
+                    selected = if (settings.stylusDoubleTap) "eraser" else "off"
+                ) { scope.launch { store.setStylusDoubleTap(it == "eraser") } }
             }
 
             SectionHeader("Math")

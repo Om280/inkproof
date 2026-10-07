@@ -194,8 +194,22 @@ class EditorViewModel(
 
     // ================= tools =================
 
+    // Last non-eraser tool, restored by the stylus double-press toggle.
+    private var rememberedTool: ToolType = ToolType.PEN
+
     fun setTool(tool: ToolType) {
+        if (tool != ToolType.ERASER) rememberedTool = tool
         _penStyle.value = _penStyle.value.copy(tool = tool)
+    }
+
+    /** Stylus button double-press: eraser <-> previous tool. */
+    fun stylusToggleEraser() {
+        val result = com.inkproof.app.ink.StylusEraserToggle.toggle(
+            current = _penStyle.value.tool,
+            remembered = rememberedTool
+        )
+        rememberedTool = result.remembered
+        _penStyle.value = _penStyle.value.copy(tool = result.tool)
     }
 
     fun setColor(color: Int) {

@@ -235,7 +235,7 @@ fun EditorScreen(
     }
 
     // Keep tool config in sync.
-    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, settings.stabilization, shapeKind, canvasRef) {
+    LaunchedEffect(penStyle, settings.holdToShapeMs, settings.fingerWriting, settings.eraserRadius, settings.stabilization, settings.stylusDoubleTap, shapeKind, canvasRef) {
         canvasRef?.let {
             it.penStyle = penStyle
             it.holdToShapeMs = settings.holdToShapeMs
@@ -244,6 +244,8 @@ fun EditorScreen(
             it.stabilization =
                 com.inkproof.app.ink.StrokeStabilizer.Level.fromName(settings.stabilization)
             it.activeShapeKind = shapeKind
+            it.stylusDoubleTapEnabled = settings.stylusDoubleTap
+            it.onStylusDoubleTap = { viewModel.stylusToggleEraser() }
         }
     }
 

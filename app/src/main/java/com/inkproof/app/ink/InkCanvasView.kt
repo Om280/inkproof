@@ -190,6 +190,31 @@ class InkCanvasView @JvmOverloads constructor(
     /** Shape drawn by the explicit SHAPE tool (picked in the toolbar). */
     var activeShapeKind: ShapeType = ShapeType.RECTANGLE
 
+    // ----- stylus button double-press -> toggle eraser -----
+    // Driven ONLY by real hardware button state transitions (never faked
+    // from screen taps). See StylusDoubleTapDetector for the OnePlus note.
+    var stylusDoubleTapEnabled: Boolean = true
+    var onStylusDoubleTap: (() -> Unit)? = null
+    private val stylusDoubleTap = StylusDoubleTapDetector()
+    private var stylusButtonWasDown = false
+
+    private fun trackStylusButton(event: MotionEvent) {
+        if (!stylusDoubleTapEnabled) {
+            stylusButtonWasDown = false
+            return
+        }
+        val mask = MotionEvent.BUTTON_STYLUS_PRIMARY or
+            MotionEvent.BUTTON_STYLUS_SECONDARY
+        val down = (event.buttonState and mask) != 0
+        if (down && !stylusButtonWasDown &&
+            stylusDoubleTap.onButtonPress(SystemClock.uptimeMillis())
+        ) {
+            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onStylusDoubleTap?.invoke()
+        }
+        stylusButtonWasDown = down
+    }
+
     private val camera = CanvasCamera()
 
     // ----- committed strokes (page order) -----
@@ -438,6 +463,11 @@ class InkCanvasView @JvmOverloads constructor(
     // ================= input =================
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS ||
+            event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
+        ) {
+            trackStylusButton(event)
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 hovering = true
@@ -465,7 +495,10 @@ class InkCanvasView @JvmOverloads constructor(
         val isStylus = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
             toolType == MotionEvent.TOOL_TYPE_ERASER
 
-        if (isStylus) lastStylusContact = SystemClock.uptimeMillis()
+        if (isStylus) {
+            lastStylusContact = SystemClock.uptimeMillis()
+            trackStylusButton(event)
+        }
 
         when (action) {
             MotionEvent.ACTION_DOWN -> {

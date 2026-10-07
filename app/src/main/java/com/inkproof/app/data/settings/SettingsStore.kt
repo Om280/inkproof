@@ -31,6 +31,8 @@ data class Settings(
     val pressureEnabled: Boolean = true,
     val holdToShapeMs: Long = 400L,
     val eraserRadius: Float = 18f,
+    /** Stylus button double-press toggles eraser <-> previous tool. */
+    val stylusDoubleTap: Boolean = true,
     // Math
     val recognitionConfidenceThreshold: Float = 0.4f,
     val autoShowHints: Boolean = false,
@@ -55,6 +57,7 @@ class SettingsStore(private val context: Context) {
         val PRESSURE = booleanPreferencesKey("pressure_enabled")
         val HOLD_MS = longPreferencesKey("hold_to_shape_ms")
         val ERASER_RADIUS = floatPreferencesKey("eraser_radius")
+        val STYLUS_DOUBLE_TAP = booleanPreferencesKey("stylus_double_tap")
         val RECOGNITION_CONFIDENCE = floatPreferencesKey("recognition_confidence")
         val AUTO_HINTS = booleanPreferencesKey("auto_show_hints")
         val MOCK_MODE = booleanPreferencesKey("mock_mode")
@@ -75,6 +78,7 @@ class SettingsStore(private val context: Context) {
             pressureEnabled = p[Keys.PRESSURE] ?: true,
             holdToShapeMs = p[Keys.HOLD_MS] ?: 400L,
             eraserRadius = p[Keys.ERASER_RADIUS] ?: 18f,
+            stylusDoubleTap = p[Keys.STYLUS_DOUBLE_TAP] ?: true,
             recognitionConfidenceThreshold = p[Keys.RECOGNITION_CONFIDENCE] ?: 0.4f,
             autoShowHints = p[Keys.AUTO_HINTS] ?: false,
             mockMode = p[Keys.MOCK_MODE] ?: BuildConfig.DEFAULT_MOCK_MODE,
@@ -115,6 +119,9 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setEraserRadius(value: Float) =
         context.dataStore.edit { it[Keys.ERASER_RADIUS] = value }
+
+    suspend fun setStylusDoubleTap(value: Boolean) =
+        context.dataStore.edit { it[Keys.STYLUS_DOUBLE_TAP] = value }
 
     suspend fun setRecognitionConfidence(value: Float) =
         context.dataStore.edit { it[Keys.RECOGNITION_CONFIDENCE] = value }
