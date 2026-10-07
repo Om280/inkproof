@@ -29,12 +29,23 @@ Primary hardware target: **OnePlus Pad + OnePlus Stylo 2**.
   worksheet. Switching templates never touches your ink.
 - **Hold-to-shape** — draw a rough shape, keep the pen down ~400 ms (tunable in
   Settings) and it snaps to a clean line / arrow / circle / ellipse /
-  rectangle / square / triangle / polygon. Release early and your original ink
-  is kept.
+  rectangle / square / triangle. Deliberately conservative: small glyphs,
+  letters, parentheses and math symbols can never snap — uncertain geometry
+  always stays exactly as you drew it.
+- **Contextual toolbar** — selecting pen / highlighter / eraser / shapes shows
+  a compact horizontal options strip (colors, widths, sizes, shape kinds)
+  under the toolbar; it scrolls sideways when narrow. No tall menus ever
+  cover the notebook.
+- **Stylus button double-press** — toggles eraser ↔ previous tool (Settings →
+  Writing; default on). Uses real `BUTTON_STYLUS_PRIMARY/SECONDARY` events —
+  never faked from screen taps.
 - **Text boxes** — tap with the Text tool to place typed text anywhere on the
   page; tap an existing box to edit or delete it.
 - **Import image** — pick a photo from the gallery and it becomes a page you
   can annotate (great for textbook problems).
+- **Question sources** — + Question offers Write by hand / Type / Paste /
+  Import image / Import PDF; an imported image or PDF page becomes the
+  question statement with a normal handwriting solution band below it.
 - **Math question pages** — a **Question is a first-class object** with its own
   content (typed, handwritten, pasted, imported), its own solution region,
   version counters and check history. Multiple questions per page are fully
@@ -62,7 +73,11 @@ Primary hardware target: **OnePlus Pad + OnePlus Stylo 2**.
   slate, dark grey, near black); independent of both template and app theme;
   template lines adapt to dark paper; ink is never auto-inverted.
 - **Recognize math** — lasso a region → Recognize math → Accept / Edit;
-  local on-device recognition, never automatic, never replaces handwriting.
+  on-device recognition first (with per-line writing-area + pre-context and
+  math normalization: `x2` → `x^2`, unicode symbols → ASCII), and ONLY if
+  that is uncertain, one cloud attempt through your backend
+  (`POST /api/recognize`, Gemini multimodal on a render of the selected
+  strokes). Never automatic, never replaces handwriting, never guesses.
 - **Dark mode** — System / Light / Dark in Settings → Appearance; one theme
   system drives every screen, dialog and panel. Pages keep their own paper
   color — a dark app never forces dark pages.
@@ -209,6 +224,10 @@ npm start                   # zero dependencies, plain Node
 npm test
 ```
 
+Endpoints: `GET /api/health`, `POST /api/check`, `POST /api/solve`, and
+`POST /api/recognize` (hybrid handwriting-recognition fallback — the app
+only calls it when on-device recognition is uncertain).
+
 **Google Gemini is the primary AI provider** — set `GEMINI_API_KEY`
 (free key from https://aistudio.google.com/apikey). The default model is the
 rolling alias `gemini-flash-latest`, so the backend never pins an obsolete
@@ -330,7 +349,14 @@ invalidation on solution edits, empty-input error states, backend schema
 validation, provider priority (Gemini first), rate limiting and dedup cache,
 stroke stabilization (jitter reduction, corner preservation, endpoint
 fidelity, OFF pass-through), paper-color persistence + page independence +
-dark-paper detection + adaptive template lines + ink never recolored.
+dark-paper detection + adaptive template lines + ink never recolored,
+hold-to-shape conservatism (letter-o loop, parenthesis, √ stroke, sine curve
+and lumpy quads all stay handwriting), math normalization (implicit powers,
+unicode symbols, word-safety for sin/log), hybrid recognition (cloud never
+contacted when local is confident; honest uncertain results), stylus
+double-press detection (timing windows, consumed pairs, OFF reset) and
+eraser↔previous-tool restoration, and the backend /api/recognize contract
+(mock shape, missing-image and bad-mime rejection).
 
 CI (GitHub Actions) runs both suites and uploads a debug APK artifact on every
 push.
@@ -349,10 +375,14 @@ with thousands of strokes, pinch-zoom smoothness.
 ## Known limitations
 
 - On-device ML Kit digital ink uses the `en-US` text model (Google ships no
-  public math model); complex notation is better served by a cloud math
-  recognizer — the `HandwritingRecognizer` interface is designed for exactly
-  that swap. When recognition confidence is low, InkProof reports UNCLEAR
+  public math model). InkProof compensates with recognition context +
+  math normalization, and a hybrid cloud fallback (`/api/recognize`) for
+  low-confidence ink. When even that is uncertain, InkProof reports UNCLEAR
   instead of guessing.
+- The OnePlus Stylo "double-tap the barrel" air gesture is handled by OnePlus
+  firmware and is not exposed to third-party apps as a public event. InkProof
+  listens for real stylus *button* events; if the OEM maps the gesture to a
+  button event it works automatically.
 - Image objects as movable canvas elements are modelled in the database but
   not yet editable in the UI — "Import image" brings a picture in as a page
   you can write on instead.
