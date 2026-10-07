@@ -415,6 +415,78 @@ class EditorViewModel(
         }
     }
 
+    /**
+     * Create a Question whose statement is an imported image or the first
+     * page of an imported PDF (§ imported regions become Question objects).
+     * The media is copied into app storage and rendered inside the
+     * question band; the solution area below stays normal handwriting.
+     */
+    fun createQuestionFromMedia(uri: android.net.Uri, isPdf: Boolean) {
+        val content = _pageContent.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmap = runCatching {
+                if (isPdf) renderPdfFirstPage(uri)
+                else app.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it)
+                }
+            }.getOrNull()
+            if (bitmap == null) {
+                _toast.emit(
+                    if (isPdf) "Couldn't read that PDF." else "Couldn't read that image."
+                )
+                return@launch
+            }
+            val dir = java.io.File(app.filesDir, "question_media").apply { mkdirs() }
+            val file = java.io.File(dir, "${newId()}.png")
+            runCatching {
+                java.io.FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 92, out)
+                }
+            }.onFailure {
+                _toast.emit("Couldn't save the imported file.")
+                return@launch
+            }
+
+            // Scale the question band to the media's aspect ratio.
+            val pageWidth = 1600f
+            val availW = pageWidth - 72f
+            val mediaHeight = (availW / bitmap.width * bitmap.height)
+                .coerceIn(120f, 620f)
+            val existing = pageRepo.questionsForPage(content.page.id)
+            val top = (existing.maxOfOrNull { it.solutionBottom } ?: 60f) + 40f
+            pageRepo.createQuestion(
+                pageId = content.page.id,
+                contentType = if (isPdf) QuestionContentType.PDF else QuestionContentType.IMAGE,
+                mediaPath = file.absolutePath,
+                questionTop = top,
+                questionHeight = mediaHeight + 110f
+            )
+            refreshQuestions()
+            _toast.emit("Question added from ${if (isPdf) "PDF" else "image"}")
+        }
+    }
+
+    private fun renderPdfFirstPage(uri: android.net.Uri): Bitmap? =
+        app.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                if (renderer.pageCount == 0) return@use null
+                renderer.openPage(0).use { page ->
+                    val scale = (1400f / page.width).coerceIn(1f, 4f)
+                    val bmp = Bitmap.createBitmap(
+                        (page.width * scale).toInt(),
+                        (page.height * scale).toInt(),
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bmp.eraseColor(android.graphics.Color.WHITE)
+                    page.render(
+                        bmp, null, null,
+                        android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                    )
+                    bmp
+                }
+            }
+        }
+
     fun updateQuestionText(questionId: String, text: String) {
         viewModelScope.launch(Dispatchers.IO) {
             pageRepo.updateQuestionText(questionId, text)

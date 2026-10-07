@@ -2,6 +2,7 @@ package com.inkproof.app.ink
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -344,6 +345,9 @@ class InkCanvasView @JvmOverloads constructor(
         textSize = 34f
     }
     private val textObjPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val questionMediaPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    /** Decoded question media (imported image / PDF crop), keyed by path. */
+    private val questionMediaCache = HashMap<String, Bitmap?>()
 
     init {
         setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -1240,6 +1244,25 @@ class InkCanvasView @JvmOverloads constructor(
             val text = q.typedText
             if (!text.isNullOrBlank()) {
                 drawWrappedText(canvas, text, 36f, q.questionTop + 78f, pageWidth - 72f, questionTextPaint)
+            }
+            // Imported image / PDF-page question statements.
+            val media = q.mediaPath
+            if (!media.isNullOrBlank()) {
+                val bmp = questionMediaCache.getOrPut(media) {
+                    runCatching { BitmapFactory.decodeFile(media) }.getOrNull()
+                }
+                if (bmp != null && bmp.width > 0) {
+                    val availW = pageWidth - 72f
+                    val availH = (q.questionBottom - q.questionTop - 90f)
+                        .coerceAtLeast(40f)
+                    val scale = minOf(availW / bmp.width, availH / bmp.height)
+                    val dst = RectF(
+                        36f, q.questionTop + 48f,
+                        36f + bmp.width * scale,
+                        q.questionTop + 48f + bmp.height * scale
+                    )
+                    canvas.drawBitmap(bmp, null, dst, questionMediaPaint)
+                }
             }
             // Solution band tint + label.
             canvas.drawRect(0f, q.solutionTop, pageWidth, q.solutionBottom, solutionTint)

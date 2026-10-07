@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -134,6 +136,12 @@ fun EditorScreen(
     var canvasRef by remember { mutableStateOf<InkCanvasView?>(null) }
     var shapeKind by remember { mutableStateOf(com.inkproof.app.model.ShapeType.RECTANGLE) }
     var showQuestionComposer by remember { mutableStateOf(false) }
+    val questionImageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.createQuestionFromMedia(it, isPdf = false) } }
+    val questionPdfLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { viewModel.createQuestionFromMedia(it, isPdf = true) } }
     var editQuestionId by remember { mutableStateOf<String?>(null) }
     var showTemplatePicker by remember { mutableStateOf(false) }
     var showPaperColorPicker by remember { mutableStateOf(false) }
@@ -550,6 +558,14 @@ fun EditorScreen(
             onCreate = { type, text ->
                 viewModel.createQuestion(type, text)
                 showQuestionComposer = false
+            },
+            onImportImage = {
+                showQuestionComposer = false
+                questionImageLauncher.launch(arrayOf("image/*"))
+            },
+            onImportPdf = {
+                showQuestionComposer = false
+                questionPdfLauncher.launch(arrayOf("application/pdf"))
             }
         )
     }
@@ -1568,7 +1584,9 @@ private fun QuestionActionsOverlay(
 @Composable
 private fun QuestionComposerDialog(
     onDismiss: () -> Unit,
-    onCreate: (QuestionContentType, String?) -> Unit
+    onCreate: (QuestionContentType, String?) -> Unit,
+    onImportImage: () -> Unit,
+    onImportPdf: () -> Unit
 ) {
     var mode by remember { mutableStateOf(QuestionContentType.TYPED) }
     var text by remember { mutableStateOf("") }
@@ -1586,12 +1604,15 @@ private fun QuestionComposerDialog(
                     color = MutedText
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ModeChip("Type", mode == QuestionContentType.TYPED) {
-                        mode = QuestionContentType.TYPED
-                    }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
                     ModeChip("Write by hand", mode == QuestionContentType.HANDWRITTEN) {
                         mode = QuestionContentType.HANDWRITTEN
+                    }
+                    ModeChip("Type", mode == QuestionContentType.TYPED) {
+                        mode = QuestionContentType.TYPED
                     }
                     ModeChip("Paste", mode == QuestionContentType.PASTED) {
                         mode = QuestionContentType.PASTED
@@ -1602,6 +1623,8 @@ private fun QuestionComposerDialog(
                             ?.toString()
                         if (!pasted.isNullOrBlank()) text = pasted
                     }
+                    ModeChip("Import image", selected = false, onClick = onImportImage)
+                    ModeChip("Import PDF", selected = false, onClick = onImportPdf)
                 }
                 Spacer(Modifier.height(12.dp))
                 when (mode) {
