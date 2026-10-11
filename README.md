@@ -18,7 +18,7 @@ Early native Android tablet prototype. **Not a complete release.** This reposito
 
 ## Build and run Android
 
-Requires JDK 17, Android SDK Platform 35 and Android Gradle Plugin 8.7.3. This minimal repository has no Gradle wrapper; install Gradle 8.9 and run `gradle :app:assembleDebug` from the repository root. Install `app/build/outputs/apk/debug/app-debug.apk` with `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The development sandbox does not have Java, Gradle or an Android SDK; no APK was generated here. Android 13+ Java `InputStream.readAllBytes()` may be unavailable on older API levels: the app targets API 26+, so health inspection should be exercised on target hardware before release.
+Requires JDK 17, Android SDK Platform 35 and Android Gradle Plugin 8.7.3. This minimal repository has no Gradle wrapper; install Gradle 8.9 and run `gradle :app:assembleDebug` from the repository root. Install `app/build/outputs/apk/debug/app-debug.apk` with `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The development sandbox does not have Java, Gradle or an Android SDK; no APK was generated here.
 
 The app starts with a blank page. Stylus draws in the freeform area or a question's solution area; finger scrolls the vertical page list. Tap `+ PAGE` or `+ QUESTION`; question creation does not add a page. Paper color is per page; tool settings apply to the selected drawing surface. The emulator backend URL defaults to `http://10.0.2.2:8080`; on a physical tablet tap SERVER and enter `http://YOUR_PC_LAN_IP:8080`. Phone/tablet and PC must share a network. HTTP cleartext is enabled **for local development only**; use authenticated HTTPS before exposing a backend publicly.
 
