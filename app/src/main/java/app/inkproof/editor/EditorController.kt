@@ -167,7 +167,7 @@ class EditorController(
         publish(invalidate = true)
     }
 
-    fun setTool(mode: ToolMode) {
+    fun selectTool(mode: ToolMode) {
         tool = mode
         _chrome.value = _chrome.value.copy(tool = mode, flyout = true)
         onInvalidate?.invoke()

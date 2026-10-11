@@ -85,9 +85,15 @@ fun stabilize(points: List<InkPoint>, level: StabilizerLevel): List<InkPoint> {
         StabilizerLevel.HIGH -> 36.0
         StabilizerLevel.OFF -> 180.0
     }
-    val anchors = (listOf(0) + detectCornerIndices(points, cornerAngle, minDist = 12f).sorted() + listOf(points.lastIndex))
-        .distinct()
-        .sorted()
+    val length = pathLength(points).coerceAtLeast(1f)
+    val straight = maxChordDeviation(points) / length < 0.08f
+    val anchors = if (straight) {
+        listOf(0, points.lastIndex)
+    } else {
+        (listOf(0) + detectCornerIndices(points, cornerAngle, minDist = 12f).sorted() + listOf(points.lastIndex))
+            .distinct()
+            .sorted()
+    }
     val out = points.toMutableList()
     for (segment in 0 until anchors.size - 1) {
         val start = anchors[segment]
@@ -293,6 +299,25 @@ fun eraseStrokes(
         out.addAll(result.strokes)
     }
     return out to changed
+}
+
+private fun pathLength(points: List<InkPoint>): Float {
+    var length = 0f
+    for (i in 1 until points.size) {
+        length += distance(points[i - 1].x, points[i - 1].y, points[i].x, points[i].y)
+    }
+    return length
+}
+
+private fun maxChordDeviation(points: List<InkPoint>): Float {
+    if (points.size < 2) return 0f
+    val a = points.first()
+    val b = points.last()
+    var maxDev = 0f
+    for (p in points) {
+        maxDev = max(maxDev, distancePointToSegment(p.x, p.y, a.x, a.y, b.x, b.y))
+    }
+    return maxDev
 }
 
 fun meanDeviationFromLine(points: List<InkPoint>): Float {

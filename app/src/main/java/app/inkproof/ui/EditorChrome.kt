@@ -91,7 +91,7 @@ fun ToolRail(controller: EditorController) {
                 Box(
                     Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
                         .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else Color.Transparent)
-                        .clickable { controller.setTool(mode) },
+                        .clickable { controller.selectTool(mode) },
                     contentAlignment = Alignment.Center,
                 ) {
                     ToolGlyph(mode, if (mode == ToolMode.MARKER) state.markerColor else state.penColor)
