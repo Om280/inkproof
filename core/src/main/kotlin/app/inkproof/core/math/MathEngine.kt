@@ -285,53 +285,57 @@ fun parseEquation(raw: String): Equation? {
     }
 }
 
-fun toPoly(expr: Expr, variable: String = "x"): Poly? = when (expr) {
-    is Expr.Num -> polyConst(expr.v)
-    is Expr.Var -> if (expr.name == variable) Poly(listOf(0.0, 1.0)) else null
-    is Expr.Neg -> toPoly(expr.e, variable)?.let { -it }
-    is Expr.Add -> {
-        val a = toPoly(expr.a, variable) ?: return null
-        val b = toPoly(expr.b, variable) ?: return null
-        a + b
+fun toPoly(expr: Expr, variable: String = "x"): Poly? {
+    return when (expr) {
+        is Expr.Num -> polyConst(expr.v)
+        is Expr.Var -> if (expr.name == variable) Poly(listOf(0.0, 1.0)) else null
+        is Expr.Neg -> toPoly(expr.e, variable)?.let { -it }
+        is Expr.Add -> {
+            val a = toPoly(expr.a, variable) ?: return null
+            val b = toPoly(expr.b, variable) ?: return null
+            a + b
+        }
+        is Expr.Sub -> {
+            val a = toPoly(expr.a, variable) ?: return null
+            val b = toPoly(expr.b, variable) ?: return null
+            a - b
+        }
+        is Expr.Mul -> {
+            val a = toPoly(expr.a, variable) ?: return null
+            val b = toPoly(expr.b, variable) ?: return null
+            a * b
+        }
+        is Expr.Div -> {
+            val a = toPoly(expr.a, variable) ?: return null
+            val b = toPoly(expr.b, variable) ?: return null
+            if (b.degree() != 0) return null
+            val d = b.coeff(0)
+            if (abs(d) < 1e-12) return null
+            a * (1.0 / d)
+        }
+        is Expr.Pow -> {
+            val base = toPoly(expr.a, variable) ?: return null
+            val exp = expr.b
+            val n = (exp as? Expr.Num)?.v ?: return null
+            if (n < 0 || n > 12 || n != kotlin.math.floor(n)) return null
+            base.pow(n.toInt())
+        }
+        is Expr.Call -> null
     }
-    is Expr.Sub -> {
-        val a = toPoly(expr.a, variable) ?: return null
-        val b = toPoly(expr.b, variable) ?: return null
-        a - b
-    }
-    is Expr.Mul -> {
-        val a = toPoly(expr.a, variable) ?: return null
-        val b = toPoly(expr.b, variable) ?: return null
-        a * b
-    }
-    is Expr.Div -> {
-        val a = toPoly(expr.a, variable) ?: return null
-        val b = toPoly(expr.b, variable) ?: return null
-        if (b.degree() != 0) return null
-        val d = b.coeff(0)
-        if (abs(d) < 1e-12) return null
-        a * (1.0 / d)
-    }
-    is Expr.Pow -> {
-        val base = toPoly(expr.a, variable) ?: return null
-        val exp = expr.b
-        val n = (exp as? Expr.Num)?.v ?: return null
-        if (n < 0 || n > 12 || n != kotlin.math.floor(n)) return null
-        base.pow(n.toInt())
-    }
-    is Expr.Call -> null
 }
 
 data class Rational(val num: Poly, val den: Poly)
 
-fun toRational(expr: Expr, variable: String = "x"): Rational? = when (expr) {
-    is Expr.Div -> {
-        val n = toPoly(expr.a, variable) ?: return null
-        val d = toPoly(expr.b, variable) ?: return null
-        if (d.degree() < 0) return null
-        Rational(n, d)
+fun toRational(expr: Expr, variable: String = "x"): Rational? {
+    return when (expr) {
+        is Expr.Div -> {
+            val n = toPoly(expr.a, variable) ?: return null
+            val d = toPoly(expr.b, variable) ?: return null
+            if (d.degree() < 0) return null
+            Rational(n, d)
+        }
+        else -> toPoly(expr, variable)?.let { Rational(it, polyConst(1.0)) }
     }
-    else -> toPoly(expr, variable)?.let { Rational(it, polyConst(1.0)) }
 }
 
 fun roots(poly: Poly): List<Double>? {
@@ -468,7 +472,8 @@ private fun readNumberToken(s: String): Pair<Double, String>? {
     return n to s.substring(i)
 }
 
-fun evalNumeric(expr: Expr): Double? = when (expr) {
+fun evalNumeric(expr: Expr): Double? {
+    return when (expr) {
     is Expr.Num -> expr.v
     is Expr.Var -> null
     is Expr.Neg -> evalNumeric(expr.e)?.let { -it }
@@ -508,6 +513,7 @@ fun evalNumeric(expr: Expr): Double? = when (expr) {
             "ln", "log" -> if (arg <= 0) null else kotlin.math.ln(arg)
             else -> null
         }
+    }
     }
 }
 

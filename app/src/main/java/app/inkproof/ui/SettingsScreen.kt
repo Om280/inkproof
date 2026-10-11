@@ -82,8 +82,8 @@ fun SettingsScreen(
             onValueChange = { url = it },
             label = { Text("Backend URL") },
             modifier = Modifier.padding(top = 8.dp),
-            supportingText = { Text("Emulator: http://10.0.2.2:8787. Tablet: http://YOUR-PC-LAN-IP:8787") },
         )
+        Text("Emulator: http://10.0.2.2:8787. Tablet: http://YOUR-PC-LAN-IP:8787", style = MaterialTheme.typography.bodySmall)
         Button(onClick = { onChange(settings.copy(backendUrl = url.trim())); onTest() }, modifier = Modifier.padding(top = 8.dp)) {
             Text("Check backend")
         }
