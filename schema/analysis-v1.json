@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "description": "InkProof analysis contract. The app renders this JSON. The model does not control layout.",
+  "status": ["correct", "incorrect", "incomplete", "unclear", "unsupported", "error"],
+  "fields": {
+    "schemaVersion": "integer, must be 1",
+    "status": "one of the status values",
+    "confidence": "number from 0 to 1",
+    "provider": "on_device | gemini | on_device+gemini | mock | backend",
+    "mock": "boolean. Real provider responses must be false.",
+    "model": "model id when provider used Gemini, otherwise null",
+    "recognizedQuestion": "string",
+    "recognizedSteps": ["string"],
+    "stepAssessments": [{ "stepIndex": 0, "text": "", "verdict": "correct|incorrect|depends_on_error|unclear|commentary", "note": "" }],
+    "firstError": { "stepIndex": 0, "explanation": "" },
+    "explanation": "string. Must not be treated as the full solution.",
+    "hints": ["progressive hints that do not reveal the final answer"],
+    "finalAnswer": "hidden by the app until the student asks",
+    "fullSolution": ["hidden by the app until the student asks"],
+    "errorCode": "MISSING_API_KEY | INVALID_API_KEY | RATE_LIMIT | MODEL_ERROR | NETWORK | TIMEOUT | INVALID_RESPONSE | UPSTREAM | UNSUPPORTED | null",
+    "message": "human-readable error or note",
+    "questionId": "the only question this payload is about",
+    "action": "check | solve | recognize"
+  }
+}

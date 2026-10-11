@@ -1,0 +1,14 @@
+{
+  "name": "inkproof-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Local InkProof backend. Holds the Gemini API key so the Android app never sees it.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
