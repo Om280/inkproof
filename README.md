@@ -13,10 +13,10 @@ Labels mean what they say. Source existing is not the same as a passing build, a
 | Area | Status |
 | --- | --- |
 | Notebook model, ink engine, shapes, local math checker, import text extractors | Implemented |
-| Question A / Question B request isolation in the core module | Implemented. Automated test is part of `:core:test` (see the latest GitHub Actions run before treating it as passed) |
-| Backend (`node server.js`) health, missing-key failure, labeled mock | Implemented. Automated test passed locally with `node --test backend/test/server.test.js` (6 passed, 0 failed) on 2026-10-11 |
-| Android library, editor, custom ink canvas, settings, file import, annotated PDF export | Implemented |
-| Debug APK | Built only if the Android job on this branch is green. Do not treat a workflow file as a build. Artifact name: `inkproof-debug-apk`. Local path inside that job: `app/build/outputs/apk/debug/app-debug.apk` |
+| Question A / Question B request isolation in the core module | Implemented. Automated test passed in GitHub Actions run [38119244590](https://github.com/Om280/inkproof/actions/runs/38119244590) (`:core:test` exit 0 on commit `86a885f`) |
+| Backend (`node server.js`) health, missing-key failure, labeled mock | Implemented. Automated test passed locally with `node --test backend/test/server.test.js` (6 passed, 0 failed) on 2026-10-11, and the same command passed in that Actions run (Backend tests job, 5s) |
+| Android library, editor, custom ink canvas, settings, file import, annotated PDF export | Implemented. `:app:testDebugUnitTest` and `:app:assembleDebug` exited 0 in that same Actions run |
+| Debug APK | Built by GitHub Actions run [38119244590](https://github.com/Om280/inkproof/actions/runs/38119244590) on commit `86a885f`. Artifact `inkproof-debug-apk` (about 24 MB, not expired). Job path: `app/build/outputs/apk/debug/app-debug.apk`. A later docs-only commit does not rebuild the APK until its own run finishes |
 | Live Gemini check or solve | Blocked: no `GEMINI_API_KEY` is configured in this environment. A missing key returns a non-200 `MISSING_API_KEY` error. It is not reported as correct |
 | OnePlus Pad 2 + OnePlus Stylo 2 | Requires physical-device validation. See `docs/DEVICE_ACCEPTANCE.md`. Every stylus item there is **NOT YET VERIFIED** |
 
@@ -123,7 +123,9 @@ gradle :app:assembleDebug --no-daemon
 
 Android Studio can create the wrapper when it syncs. Accept Gradle 8.11.1 if it asks.
 
-Continuous integration is `.github/workflows/android.yml`. It runs the backend tests and the Android jobs above, then uploads `inkproof-debug-apk`.
+Continuous integration is `.github/workflows/android.yml`. It runs the backend tests and the Android jobs above, then uploads `inkproof-debug-apk` only if `:core:test`, `:app:testDebugUnitTest`, and `:app:assembleDebug` all exit 0.
+
+The green run for the app sources is https://github.com/Om280/inkproof/actions/runs/38119244590 (commit `86a885fe9fddc38fafca44ad39b0c17d72ea4159`). That run is not a substitute for the device checklist.
 
 ## Layout
 
