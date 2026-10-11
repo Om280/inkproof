@@ -63,14 +63,14 @@ class UnistrokeRecognizer {
 
 fun assemble(symbols: List<SymbolBox>): String {
     if (symbols.isEmpty()) return ""
-    val sorted = symbols.sortedWith(compareBy({ it.y + it.h / 2f }, { it.x }))
+    val sorted = symbols.sortedBy { it.x }
     val lines = ArrayList<MutableList<SymbolBox>>()
     for (symbol in sorted) {
-        val cy = symbol.y + symbol.h / 2f
         val line = lines.firstOrNull { existing ->
-            val ref = existing.first()
-            val ry = ref.y + ref.h / 2f
-            abs(cy - ry) < max(ref.h, symbol.h) * 0.65f
+            val ref = existing.maxBy { it.h }
+            val above = symbol.y + symbol.h >= ref.y - ref.h * 0.55f
+            val below = symbol.y <= ref.y + ref.h * 1.15f
+            above && below
         }
         if (line == null) lines.add(mutableListOf(symbol)) else line.add(symbol)
     }

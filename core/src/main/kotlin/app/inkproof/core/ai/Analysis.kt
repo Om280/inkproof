@@ -180,8 +180,14 @@ data class ReviewPanel(
 class AnalysisCache {
     private val map = HashMap<String, AnalysisResponse>()
 
-    fun key(mode: AiMode, action: String, questionId: String, promptVersion: Int, solutionVersion: Int): String =
-        "$mode|$action|$questionId|$promptVersion|$solutionVersion"
+    fun key(
+        mode: AiMode,
+        action: String,
+        questionId: String,
+        promptVersion: Int,
+        solutionVersion: Int,
+        content: String = "",
+    ): String = "$mode|$action|$questionId|$promptVersion|$solutionVersion|${content.hashCode()}"
 
     fun get(key: String): AnalysisResponse? = map[key]
     fun put(key: String, response: AnalysisResponse) {
@@ -265,7 +271,14 @@ class AnalysisPipeline(
     private val mode: () -> AiMode,
 ) {
     fun check(request: CheckRequest): AnalysisResponse {
-        val key = cache.key(mode(), "check", request.questionId, request.promptVersion, request.solutionVersion)
+        val key = cache.key(
+            mode(),
+            "check",
+            request.questionId,
+            request.promptVersion,
+            request.solutionVersion,
+            request.promptText + "\n" + request.solutionText,
+        )
         cache.get(key)?.let { return it }
         val local = runLocalCheck(request)
         val response = when (mode()) {
@@ -278,7 +291,7 @@ class AnalysisPipeline(
     }
 
     fun solve(request: SolveRequest): AnalysisResponse {
-        val key = cache.key(mode(), "solve", request.questionId, request.promptVersion, 0)
+        val key = cache.key(mode(), "solve", request.questionId, request.promptVersion, 0, request.promptText)
         cache.get(key)?.let { return it }
         val local = solveProblem(request.promptText)?.let { solved ->
             AnalysisResponse(

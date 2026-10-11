@@ -73,11 +73,11 @@ fun detectCornerIndices(points: List<InkPoint>, angleDeg: Double, minDist: Float
  */
 fun stabilize(points: List<InkPoint>, level: StabilizerLevel): List<InkPoint> {
     if (level == StabilizerLevel.OFF || points.size < 3) return points
-    val window = when (level) {
-        StabilizerLevel.LOW -> 1
-        StabilizerLevel.MEDIUM -> 2
-        StabilizerLevel.HIGH -> 3
-        StabilizerLevel.OFF -> 0
+    val strength = when (level) {
+        StabilizerLevel.LOW -> 0.35f
+        StabilizerLevel.MEDIUM -> 0.62f
+        StabilizerLevel.HIGH -> 0.88f
+        StabilizerLevel.OFF -> 0f
     }
     val cornerAngle = when (level) {
         StabilizerLevel.LOW -> 62.0
@@ -85,28 +85,22 @@ fun stabilize(points: List<InkPoint>, level: StabilizerLevel): List<InkPoint> {
         StabilizerLevel.HIGH -> 36.0
         StabilizerLevel.OFF -> 180.0
     }
-    val corners = detectCornerIndices(points, cornerAngle, minDist = 12f)
-    val out = ArrayList<InkPoint>(points.size)
-    for (i in points.indices) {
-        if (i == 0 || i == points.lastIndex || i in corners) {
-            out.add(points[i])
-            continue
-        }
-        var sx = 0.0
-        var sy = 0.0
-        var sw = 0.0
-        for (j in (i - window)..(i + window)) {
-            if (j !in points.indices) continue
-            if (j != i && (j in corners || j == 0 || j == points.lastIndex)) continue
-            val w = (window + 1 - abs(j - i)).toDouble()
-            sx += points[j].x * w
-            sy += points[j].y * w
-            sw += w
-        }
-        if (sw <= 0.0) {
-            out.add(points[i])
-        } else {
-            out.add(points[i].copy(x = (sx / sw).toFloat(), y = (sy / sw).toFloat()))
+    val anchors = (listOf(0) + detectCornerIndices(points, cornerAngle, minDist = 12f).sorted() + listOf(points.lastIndex))
+        .distinct()
+        .sorted()
+    val out = points.toMutableList()
+    for (segment in 0 until anchors.size - 1) {
+        val start = anchors[segment]
+        val end = anchors[segment + 1]
+        val span = (end - start).coerceAtLeast(1)
+        for (i in start + 1 until end) {
+            val t = (i - start).toFloat() / span
+            val chordX = points[start].x + (points[end].x - points[start].x) * t
+            val chordY = points[start].y + (points[end].y - points[start].y) * t
+            out[i] = points[i].copy(
+                x = points[i].x + (chordX - points[i].x) * strength,
+                y = points[i].y + (chordY - points[i].y) * strength,
+            )
         }
     }
     return out

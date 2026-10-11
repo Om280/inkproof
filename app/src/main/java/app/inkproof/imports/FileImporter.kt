@@ -52,41 +52,45 @@ class FileImporter(
     private fun importPdf(uri: Uri, name: String): ImportOutcome {
         val pfd = context.contentResolver.openFileDescriptor(uri, "r")
             ?: return ImportOutcome.Message("Could not open the PDF.")
-        try {
-            val pdf = PdfRenderer(pfd)
-            try {
-                if (pdf.pageCount == 0) return ImportOutcome.Message("The PDF has no pages.")
-                val count = minOf(pdf.pageCount, 40)
-                val notebook = repo.createNotebook(name.substringBeforeLast('.').ifBlank { "Imported PDF" })
-                val ids = mutableListOf(notebook.pageOrder.single())
-                for (i in 1 until count) ids.add(repo.createPage(notebook.id, ids.last()).id)
-                for (i in 0 until count) {
-                    val pdfPage = pdf.openPage(i)
-                    try {
-                        val width = 1400
-                        val height = (width.toFloat() * pdfPage.height / pdfPage.width).toInt().coerceAtLeast(1)
-                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        pdfPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        val assetId = UuidIds.newId()
-                        repo.saveAsset(assetId, bitmap.pngBytes(), "image/png", "page-$i.png")
-                        bitmap.recycle()
-                        val page = repo.loadPage(notebook.id, ids[i])
-                        repo.savePage(page.copy(backgroundAssetId = assetId, backgroundKind = "pdf"))
-                    } finally {
-                        pdfPage.close()
-                    }
-                }
-                val note = if (pdf.pageCount > count) {
-                    "Imported the first $count of ${pdf.pageCount} pages as a new notebook. Annotate, then export."
-                } else {
-                    "Imported $count PDF page(s) as a new notebook. Ink stays separate from the background."
-                }
-                ImportOutcome.OpenNotebook(notebook.id, note)
-            } finally {
-                pdf.close()
-            }
+        return try {
+            renderPdf(pfd, name)
         } finally {
             pfd.close()
+        }
+    }
+
+    private fun renderPdf(pfd: android.os.ParcelFileDescriptor, name: String): ImportOutcome {
+        val pdf = PdfRenderer(pfd)
+        try {
+            if (pdf.pageCount == 0) return ImportOutcome.Message("The PDF has no pages.")
+            val count = minOf(pdf.pageCount, 40)
+            val notebook = repo.createNotebook(name.substringBeforeLast('.').ifBlank { "Imported PDF" })
+            val ids = mutableListOf(notebook.pageOrder.single())
+            for (i in 1 until count) ids.add(repo.createPage(notebook.id, ids.last()).id)
+            for (i in 0 until count) {
+                val pdfPage = pdf.openPage(i)
+                try {
+                    val width = 1400
+                    val height = (width.toFloat() * pdfPage.height / pdfPage.width).toInt().coerceAtLeast(1)
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    pdfPage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    val assetId = UuidIds.newId()
+                    repo.saveAsset(assetId, bitmap.pngBytes(), "image/png", "page-$i.png")
+                    bitmap.recycle()
+                    val page = repo.loadPage(notebook.id, ids[i])
+                    repo.savePage(page.copy(backgroundAssetId = assetId, backgroundKind = "pdf"))
+                } finally {
+                    pdfPage.close()
+                }
+            }
+            val note = if (pdf.pageCount > count) {
+                "Imported the first $count of ${pdf.pageCount} pages as a new notebook. Annotate, then export."
+            } else {
+                "Imported $count PDF page(s) as a new notebook. Ink stays separate from the background."
+            }
+            return ImportOutcome.OpenNotebook(notebook.id, note)
+        } finally {
+            pdf.close()
         }
     }
 

@@ -682,7 +682,8 @@ private fun solveEquation(problem: Problem.SolveEq): Solved? {
         }
         else -> return null
     }
-    return Solved(steps, formatRoots(rs), if (diff.degree() == 1) "linear" else "quadratic")
+    val answer = if (diff.degree() == 2) prettyQuadratic(diff.coeff(2), diff.coeff(1), diff.coeff(0)) else formatRoots(rs)
+    return Solved(steps, answer, if (diff.degree() == 1) "linear" else "quadratic")
 }
 
 private fun solveDerivative(problem: Problem.Derivative): Solved? {

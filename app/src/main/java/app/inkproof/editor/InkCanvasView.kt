@@ -91,7 +91,7 @@ class InkCanvasView @JvmOverloads constructor(
     private val bitmaps = HashMap<String, Bitmap>()
     private var builtGeneration = -1
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val predictor = if (Build.VERSION.SDK_INT >= 34) android.view.MotionPredictor(this) else null
+    private val predictor = if (Build.VERSION.SDK_INT >= 34) android.view.MotionPredictor(context) else null
     private var predicted: InkPoint? = null
 
     private val holdRunnable = Runnable {
@@ -367,7 +367,7 @@ class InkCanvasView @JvmOverloads constructor(
             }
             if (Build.VERSION.SDK_INT >= 34) {
                 predictor?.record(event)
-                val future = predictor?.predict(event.eventTime + 12)
+                val future = predictor?.predict((event.eventTime + 12L) * 1_000_000L)
                 if (future != null) {
                     val pm = map(future.x, future.y)
                     predicted = pm?.let { InkPoint(it.x, it.y) }
